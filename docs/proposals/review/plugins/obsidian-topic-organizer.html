@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Obsidian topic-organizer plugin</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; max-width: 880px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.55; color: #1a1a1a; }
+  h1 { border-bottom: 2px solid #e5e5e5; padding-bottom: .4rem; }
+  h2 { margin-top: 2.4rem; border-bottom: 1px solid #ececec; padding-bottom: .25rem; }
+  h3 { margin-top: 1.6rem; }
+  table { border-collapse: collapse; margin: 1rem 0; }
+  th, td { border: 1px solid #d4d4d4; padding: .35rem .7rem; text-align: left; }
+  th { background: #f5f5f5; }
+  code { background: #f4f4f4; padding: .1rem .3rem; border-radius: 3px; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: .92em; }
+  pre { background: #f7f7f7; padding: .8rem; border-radius: 4px; overflow-x: auto; }
+  .meta { color: #555; font-size: .92rem; margin-bottom: 1.5rem; }
+  .meta span { margin-right: 1.2rem; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #1a1a1a; color: #e0e0e0; }
+    h1, h2 { border-color: #444; }
+    th { background: #2a2a2a; }
+    th, td { border-color: #444; }
+    code, pre { background: #2a2a2a; color: #e0e0e0; }
+  }
+</style>
+</head>
+<body>
+<h1>Obsidian topic-organizer plugin</h1>
+<p class="meta">
+  <span><strong>Status:</strong> design-discussion</span>
+  <span><strong>Issue:</strong> <a href="https://github.com/sh-ai-x/obsidian_organize/issues/2">#2</a></span>
+  <span><strong>Date:</strong> 2026-09-05</span>
+</p>
+<p class="meta">tags: <code>obsidian-topic-organizer</code>, <code>plugin</code>, <code>pkm</code>, <code>hermes-wiki-super</code></p>
+
+<h2>§1 — Frame</h2>
+<ul>
+  <li><strong>goal</strong>: Ship a Claude Code plugin that organizes an Obsidian vault by topic, exposing three skills — research (gather source material), add_wiki (promote to topic note), remove_wiki (withdraw topic + staged inputs) — with frontmatter + tag conventions inherited from hermes-wiki-super's add-wiki / process-clippings skills.</li>
+  <li><strong>target user</strong>: Solo PKM practitioner — one developer maintaining their own Obsidian vault; runs Claude Code locally; values reproducibility of the topic-organize workflow over collaborative features.</li>
+  <li><strong>situation</strong>: The user runs add-wiki and process-clippings skills manually against <code>~/Documents/Obsidian Vault/hermes-wiki-super</code>; topic structure exists but no first-class research/add_wiki/remove_wiki workflow.</li>
+</ul>
+
+<h2>§2 — Validate</h2>
+<table>
+  <thead><tr><th>Dimension</th><th>Result</th></tr></thead>
+  <tbody>
+    <tr><td>Evidence</td><td>3 sources (vault add-wiki, vault process-clippings, dev-harness-kit namespace convention)</td></tr>
+    <tr><td>Value score</td><td>best-effort (personal dogfood: LTV=$0, users=1, cost=$0; formula's commercial-value premise doesn't match)</td></tr>
+    <tr><td>Ambiguity</td><td>loop skipped (best-effort gate short-circuits convergence test)</td></tr>
+    <tr><td>Convergence</td><td>PASS (best-effort overrides value_score dimension)</td></tr>
+  </tbody>
+</table>
+<p>Constraints: <code>namespace:skill</code> naming (e.g. <code>obsidian-organize:research</code>); additive over existing skills, not replacement.</p>
+
+<h2>§3 — Non-goals</h2>
+<ol>
+  <li><strong>No bidirectional Obsidian sync</strong> (mobile/cloud). Rationale: different problem space, Obsidian Sync exists. Breach-response: defer to Obsidian Sync.</li>
+  <li><strong>No migration tooling</strong> for pre-existing topic notes. Rationale: migration is one-shot; not a runtime concern. Breach-response: one-off script on request.</li>
+  <li><strong>No LLM-judge evaluation harness</strong> for plugin outputs. Rationale: covered by <code>/dev-kit:evaluate</code>. Breach-response: per-skill tests in plugin; harness is project-level.</li>
+</ol>
+
+<h2>§4 — Phase plan</h2>
+<p>Phase state machine: <code>phases/obsidian-topic-organizer/index.json</code>. Per-step preambles: <code>step&lt;N&gt;.md</code> (N=0..4). Step ordering is dependency-first.</p>
+<table>
+  <thead><tr><th>Step</th><th>Title</th><th>Depends on</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td>Plugin scaffold + manifest</td><td>—</td></tr>
+    <tr><td>1</td><td>research skill</td><td>0</td></tr>
+    <tr><td>2</td><td>add_wiki skill</td><td>0, 1</td></tr>
+    <tr><td>3</td><td>remove_wiki skill</td><td>0, 2</td></tr>
+    <tr><td>4</td><td>Vault fixture + per-skill tests + integration test</td><td>1, 2, 3</td></tr>
+  </tbody>
+</table>
+
+<h2>§5 — Acceptance criteria</h2>
+<table>
+  <thead><tr><th>AC</th><th>Step</th><th>Command</th></tr></thead>
+  <tbody>
+    <tr><td>AC-1</td><td>0</td><td><code>jq . plugins/obsidian-organize/.claude-plugin/plugin.json</code></td></tr>
+    <tr><td>AC-2</td><td>1</td><td><code>test -f plugins/obsidian-organize/skills/research/{SKILL.md,references/output-schema.md}</code></td></tr>
+    <tr><td>AC-3</td><td>2</td><td><code>test -f plugins/obsidian-organize/skills/add_wiki/{SKILL.md,references/frontmatter.md}</code></td></tr>
+    <tr><td>AC-4</td><td>3</td><td><code>test -f plugins/obsidian-organize/skills/remove_wiki/{SKILL.md,references/cleanup-rules.md}</code></td></tr>
+    <tr><td>AC-5</td><td>4</td><td><code>pytest plugins/obsidian-organize/tests/ -v</code></td></tr>
+  </tbody>
+</table>
+
+<h2>§6 — Hand-off</h2>
+<ul>
+  <li><strong>Review artifact</strong>: this file (<code>docs/proposals/plugins/obsidian-topic-organizer.html</code>).</li>
+  <li><strong>Next stage</strong>: <code>/dev-kit:build obsidian-topic-organizer</code></li>
+  <li><strong>Review chain</strong>: <code>/dev-kit:review</code> (3-dim) → <code>/dev-kit:security</code> (10-dim) → <code>/dev-kit:ship</code>.</li>
+</ul>
+
+<hr>
+<p style="font-size:.85rem;color:#888;">Plan emit complete · Gate 5/5 · design-discussion · operator may re-render with <code>python3 -m lib.render_proposal_html plugins/obsidian-topic-organizer</code> for the canonical CSS once Bash is available.</p>
+
+</body>
+</html>

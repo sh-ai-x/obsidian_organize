@@ -1,0 +1,32 @@
+{
+  "name": "obsidian-organize",
+  "version": "0.1.0",
+  "description": "Topic-organizer for Obsidian vaults. Exposes research, add_wiki, and remove_wiki skills that operate on a local vault, inheriting conventions from hermes-wiki-super's add-wiki and process-clippings skills.",
+  "skills": [
+    {
+      "id": "obsidian-organize:research",
+      "path": "skills/research/SKILL.md"
+    },
+    {
+      "id": "obsidian-organize:add_wiki",
+      "path": "skills/add_wiki/SKILL.md"
+    },
+    {
+      "id": "obsidian-organize:remove_wiki",
+      "path": "skills/remove_wiki/SKILL.md"
+    }
+  ],
+  "authors": [
+    {
+      "name": "sh-ai-x"
+    }
+  ],
+  "license": "MIT",
+  "references": {
+    "vault_convention": "hermes-wiki-super",
+    "frontmatter_inherits_from": [
+      "hermes-wiki-super/add-wiki",
+      "hermes-wiki-super/process-clippings"
+    ]
+  }
+}
