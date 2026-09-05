@@ -1,8 +1,12 @@
 {
   "name": "obsidian-organize",
-  "version": "0.1.0",
-  "description": "Topic-organizer for Obsidian vaults. Exposes research, add_wiki, and remove_wiki skills that operate on a local vault, inheriting conventions from hermes-wiki-super's add-wiki and process-clippings skills.",
+  "version": "0.2.0",
+  "description": "Topic-organizer for Obsidian vaults. Exposes four skills — bootstrap (vault layout), research (gather source material), add_wiki (promote to topic note), remove_wiki (retire topic + archive). Layout mirrors hermes-wiki-super's Clippings-processed / wiki / wiki-map structure.",
   "skills": [
+    {
+      "id": "obsidian-organize:bootstrap",
+      "path": "skills/bootstrap/SKILL.md"
+    },
     {
       "id": "obsidian-organize:research",
       "path": "skills/research/SKILL.md"
@@ -24,6 +28,7 @@
   "license": "MIT",
   "references": {
     "vault_convention": "hermes-wiki-super",
+    "vault_layout": "Clippings/processed, wiki/<topic>/README.md, wiki-map.md, _research/, _archive/research/, topics/",
     "frontmatter_inherits_from": [
       "hermes-wiki-super/add-wiki",
       "hermes-wiki-super/process-clippings"
