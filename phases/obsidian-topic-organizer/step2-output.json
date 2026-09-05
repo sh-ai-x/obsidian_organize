@@ -1,0 +1,12 @@
+{
+  "step": 2,
+  "name": "add-wiki-skill",
+  "exit_code": 0,
+  "duration_seconds": 0.004034,
+  "timestamp": "2026-09-05T18:30:02Z",
+  "command": "test -f plugins/obsidian-organize/skills/add_wiki/SKILL.md && test -f plugins/obsidian-organize/skills/add_wiki/references/frontmatter.md",
+  "stdout": "step2 AC PASS\n",
+  "stderr": "",
+  "ac_verified": "AC-3",
+  "summary": "add_wiki SKILL.md and references/frontmatter.md both present"
+}

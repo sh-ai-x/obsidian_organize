@@ -1,0 +1,12 @@
+{
+  "step": 0,
+  "name": "scaffold",
+  "exit_code": 0,
+  "duration_seconds": 0.010879,
+  "timestamp": "2026-09-05T18:30:00Z",
+  "command": "jq . plugins/obsidian-organize/.claude-plugin/plugin.json",
+  "stdout": "{\n  \"name\": \"obsidian-organize\",\n  \"version\": \"0.1.0\",\n  \"description\": \"Topic-organizer for Obsidian vaults. Exposes research, add_wiki, and remove_wiki skills that operate on a local vault, inheriting conventions from hermes-wiki-super's add-wiki and process-clippings skills.\",\n  \"skills\": [\n    { \"id\": \"obsidian-organize:research\", \"path\": \"skills/research/SKILL.md\" },\n    { \"id\": \"obsidian-organize:add_wiki\", \"path\": \"skills/add_wiki/SKILL.md\" },\n    { \"id\": \"obsidian-organize:remove_wiki\", \"path\": \"skills/remove_wiki/SKILL.md\" }\n  ],\n  \"authors\": [{ \"name\": \"sh-ai-x\" }],\n  \"license\": \"MIT\",\n  \"references\": {\n    \"vault_convention\": \"hermes-wiki-super\",\n    \"frontmatter_inherits_from\": [\n      \"hermes-wiki-super/add-wiki\",\n      \"hermes-wiki-super/process-clippings\"\n    ]\n  }\n}",
+  "stderr": "",
+  "ac_verified": "AC-1",
+  "summary": "Plugin manifest valid JSON; 3 skills declared with namespace:skill IDs"
+}

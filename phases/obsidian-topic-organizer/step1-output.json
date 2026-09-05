@@ -1,0 +1,12 @@
+{
+  "step": 1,
+  "name": "research-skill",
+  "exit_code": 0,
+  "duration_seconds": 0.004205,
+  "timestamp": "2026-09-05T18:30:01Z",
+  "command": "test -f plugins/obsidian-organize/skills/research/SKILL.md && test -f plugins/obsidian-organize/skills/research/references/output-schema.md",
+  "stdout": "step1 AC PASS\n",
+  "stderr": "",
+  "ac_verified": "AC-2",
+  "summary": "research SKILL.md and references/output-schema.md both present"
+}
