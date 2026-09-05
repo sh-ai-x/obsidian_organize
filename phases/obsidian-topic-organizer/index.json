@@ -1,0 +1,85 @@
+{
+  "phase": "obsidian-topic-organizer",
+  "title": "Obsidian topic-organizer plugin",
+  "worktree": "plan/obsidian-topic-organizer",
+  "created_at": "2026-09-05",
+  "completed_at": "2026-09-05",
+  "steps": [
+    {
+      "n": 0,
+      "name": "scaffold",
+      "title": "Plugin scaffold + manifest",
+      "status": "completed",
+      "depends_on": [],
+      "writes": [
+        "plugins/obsidian-organize/.claude-plugin/plugin.json",
+        "plugins/obsidian-organize/skills/.keep",
+        "plugins/obsidian-organize/README.md"
+      ],
+      "ac": "AC-1",
+      "exit_code": 0,
+      "duration_seconds": 0.010879
+    },
+    {
+      "n": 1,
+      "name": "research-skill",
+      "title": "research skill",
+      "status": "completed",
+      "depends_on": [0],
+      "writes": [
+        "plugins/obsidian-organize/skills/research/SKILL.md",
+        "plugins/obsidian-organize/skills/research/references/output-schema.md"
+      ],
+      "ac": "AC-2",
+      "exit_code": 0,
+      "duration_seconds": 0.004205
+    },
+    {
+      "n": 2,
+      "name": "add-wiki-skill",
+      "title": "add_wiki skill",
+      "status": "completed",
+      "depends_on": [0, 1],
+      "writes": [
+        "plugins/obsidian-organize/skills/add_wiki/SKILL.md",
+        "plugins/obsidian-organize/skills/add_wiki/references/frontmatter.md"
+      ],
+      "ac": "AC-3",
+      "exit_code": 0,
+      "duration_seconds": 0.004034
+    },
+    {
+      "n": 3,
+      "name": "remove-wiki-skill",
+      "title": "remove_wiki skill",
+      "status": "completed",
+      "depends_on": [0, 2],
+      "writes": [
+        "plugins/obsidian-organize/skills/remove_wiki/SKILL.md",
+        "plugins/obsidian-organize/skills/remove_wiki/references/cleanup-rules.md"
+      ],
+      "ac": "AC-4",
+      "exit_code": 0,
+      "duration_seconds": 0.004256
+    },
+    {
+      "n": 4,
+      "name": "fixtures-and-tests",
+      "title": "Vault fixture + per-skill tests + integration test",
+      "status": "completed",
+      "depends_on": [1, 2, 3],
+      "writes": [
+        "plugins/obsidian-organize/tests/fixtures/vault/",
+        "plugins/obsidian-organize/tests/test_research.py",
+        "plugins/obsidian-organize/tests/test_add_wiki.py",
+        "plugins/obsidian-organize/tests/test_remove_wiki.py",
+        "plugins/obsidian-organize/tests/test_integration.py"
+      ],
+      "ac": "AC-5",
+      "exit_code": 0,
+      "duration_seconds": 2.18682,
+      "tests_passed": 16,
+      "tests_failed": 0
+    }
+  ]
+}

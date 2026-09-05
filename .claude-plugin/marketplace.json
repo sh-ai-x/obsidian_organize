@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "obsidian-organize-marketplace",
+  "version": "1.1.0",
+  "description": "Personal-knowledge-management plugins for Obsidian vaults. Ships the obsidian-organize plugin with four skills: bootstrap (vault layout matching hermes-wiki-super's Clippings-processed / wiki / wiki-map), research (gather source material), add_wiki (promote to topic note), remove_wiki (retire topic + archive). Additive over hermes-wiki-super's add-wiki / process-clippings.",
+  "owner": {
+    "name": "sh-ai-x"
+  },
+  "plugins": [
+    {
+      "name": "obsidian-organize",
+      "description": "Topic-organizer for Obsidian vaults. Exposes four skills on the namespace:skill convention: obsidian-organize:bootstrap (set up Clippings-processed / wiki / wiki-map layout), obsidian-organize:research (gather source material), obsidian-organize:add_wiki (promote to topic note), obsidian-organize:remove_wiki (retire topic + archive). Inherits frontmatter + tag conventions from hermes-wiki-super's add-wiki and process-clippings.",
+      "version": "0.2.0",
+      "author": {
+        "name": "sh-ai-x"
+      },
+      "source": "./plugins/obsidian-organize",
+      "category": "productivity"
+    }
+  ]
+}

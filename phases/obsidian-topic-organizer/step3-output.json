@@ -1,0 +1,12 @@
+{
+  "step": 3,
+  "name": "remove-wiki-skill",
+  "exit_code": 0,
+  "duration_seconds": 0.004256,
+  "timestamp": "2026-09-05T18:30:03Z",
+  "command": "test -f plugins/obsidian-organize/skills/remove_wiki/SKILL.md && test -f plugins/obsidian-organize/skills/remove_wiki/references/cleanup-rules.md",
+  "stdout": "step3 AC PASS\n",
+  "stderr": "",
+  "ac_verified": "AC-4",
+  "summary": "remove_wiki SKILL.md and references/cleanup-rules.md both present"
+}

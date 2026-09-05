@@ -1,0 +1,14 @@
+{
+  "step": 4,
+  "name": "fixtures-and-tests",
+  "exit_code": 0,
+  "duration_seconds": 2.18682,
+  "timestamp": "2026-09-05T18:30:05Z",
+  "command": "python3 -m pytest plugins/obsidian-organize/tests/ -v",
+  "stdout": "============================= test session starts ==============================\nplatform darwin -- Python 3.14.5, pytest-9.1.1, pluggy-1.6.0\nrootdir: /Users/sanghee/dev/obsidian_organize/.worktrees/obsidian-topic-organizer\ncollected 16 items\n\nplugins/obsidian-organize/tests/test_add_wiki.py::test_add_wiki_promotes_staged_to_topic_note PASSED\nplugins/obsidian-organize/tests/test_add_wiki.py::test_add_wiki_adds_backlinks_to_source_files PASSED\nplugins/obsidian-organize/tests/test_add_wiki.py::test_add_wiki_refuses_existing_topic_without_force PASSED\nplugins/obsidian-organize/tests/test_add_wiki.py::test_add_wiki_force_overwrites_existing_topic PASSED\nplugins/obsidian-organize/tests/test_add_wiki.py::test_add_wiki_fails_without_staged_research PASSED\nplugins/obsidian-organize/tests/test_integration.py::test_full_lifecycle_research_then_add_wiki_then_remove_wiki PASSED\nplugins/obsidian-organize/tests/test_integration.py::test_lifecycle_with_keep_staged PASSED\nplugins/obsidian-organize/tests/test_remove_wiki.py::test_remove_wiki_dry_run_does_not_mutate PASSED\nplugins/obsidian-organize/tests/test_remove_wiki.py::test_remove_wiki_archives_staged_and_deletes_topic PASSED\nplugins/obsidian-organize/tests/test_remove_wiki.py::test_remove_wiki_strips_backlinks_from_source_files PASSED\nplugins/obsidian-organize/tests/test_remove_wiki.py::test_remove_wiki_keep_staged_marks_archived_in_place PASSED\nplugins/obsidian-organize/tests/test_remove_wiki.py::test_remove_wiki_fails_without_topic_note PASSED\nplugins/obsidian-organize/tests/test_research.py::test_research_creates_staged_file_with_frontmatter PASSED\nplugins/obsidian-organize/tests/test_research.py::test_research_refuses_overwrite_without_append PASSED\nplugins/obsidian-organize/tests/test_research.py::test_research_append_extends_sources PASSED\nplugins/obsidian-organize/tests/test_research.py::test_research_rejects_invalid_slug PASSED\n\n============================== 16 passed in 0.25s ==============================\n",
+  "stderr": "",
+  "ac_verified": "AC-5",
+  "tests_passed": 16,
+  "tests_failed": 0,
+  "summary": "All 16 tests pass: 4 research + 5 add_wiki + 5 remove_wiki + 2 integration"
+}
