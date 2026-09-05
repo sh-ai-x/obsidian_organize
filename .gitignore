@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Secrets / local
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+.worktrees/
+
+# Dev-kit runtime
+.dev-kit/sanity-report.md
+.dev-kit/round-*/
+
+# >>> dev-kit >>>
+# dev-kit runtime artifacts (auto-installed by `dev-kit:ci-setup`; issue #202).
+# Marker `.dev-kit/ci-config.json` is intentionally tracked so that
+# `dev-kit:ci-setup --force` can detect drift. The paths below are
+# runtime state — write-only by dev-kit, regenerated on each run —
+# and must never be committed.
+.dev-kit/.cost-gate/
+.dev-kit/.eval-cache/
+.dev-kit/logs/
+logs/
+# <<< dev-kit <<<
