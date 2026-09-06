@@ -264,3 +264,129 @@ def test_process_clippings_creates_wiki_map_template_when_missing(
     assert "## Topics" in text
     assert "obsidian-organize:wiki-map:auto-start" in text
     assert "obsidian-organize:wiki-map:auto-end" in text
+
+
+# ---------- regression tests for /dev-kit:review + /dev-kit:security findings (PR #5) ---
+
+
+def test_extract_topic_slug_rejects_dot_only_traversal() -> None:
+    """CRITICAL (A01 Broken Access Control): a filename whose stem
+    normalizes to nothing (e.g. "..") must never produce a topic slug
+    of literal dots — `wiki/../` resolves to the vault root itself,
+    escaping the intended `wiki/<topic>/` sandbox entirely.
+    """
+    for filename in ("..", ".", "...", "____"):
+        slug = extract_topic_slug("no heading, plain body", filename)
+        assert set(slug) != {"."}, f"filename {filename!r} produced dot-only slug {slug!r}"
+        resolved = resolve_topic_dir(Path("/vault"), slug)
+        assert resolved != Path("/vault"), f"filename {filename!r} escaped to vault root"
+        assert resolved.parent == Path("/vault/wiki")
+
+
+def test_process_clippings_dot_only_stem_stays_inside_wiki(
+    vault_root: Path, fixed_now
+) -> None:
+    """End-to-end: a clipping whose stem is dot-only must land inside
+    `wiki/<safe-topic>/`, never directly under the vault root.
+
+    "_.. .md" is a real filename with suffix == ".md" (so it reaches the
+    driver's candidate scan), does NOT start with "." (so the dotfile
+    filter doesn't exclude it), and has stem == "_.. " — zero
+    alphanumerics, so `normalize_topic_slug` returns empty and this
+    reaches the last-resort branch that used to leak literal dots.
+    """
+    _write_clipping(vault_root, "_.. .md", "no heading, plain body\n")
+    result = process_clippings(vault_root, now=fixed_now, dry_run=False)
+    assert len(result.processed) == 1
+    topic_readme = result.processed[0].topic_readme
+    assert topic_readme.parent.parent == vault_root / "wiki"
+    assert topic_readme.exists()
+
+
+def test_process_clippings_wiki_map_failure_leaves_source_unmoved(
+    vault_root: Path, fixed_now, monkeypatch
+) -> None:
+    """MAJOR (A10 Exceptional Conditions): if the wiki-map append fails,
+    the source clipping must still be sitting in Clippings/ afterward —
+    NOT moved to processed/ — so a re-run can retry it instead of
+    silently losing the clipping (the previous rename-before-append
+    ordering made this data loss permanent).
+    """
+    import importlib
+
+    # `import _lib.process_clippings as x` would resolve to the
+    # re-exported *function* of the same name in _lib/__init__.py
+    # (attribute-access collision), not the submodule — go through
+    # importlib to get the actual submodule object unambiguously.
+    pc_module = importlib.import_module("_lib.process_clippings")
+
+    src = _write_clipping(vault_root, "x.md", "# Topic\n\n…\n")
+
+    def _boom(*args, **kwargs):
+        raise OSError("simulated disk-full mid wiki-map write")
+
+    monkeypatch.setattr(pc_module, "_append_wiki_map_row", _boom)
+
+    with pytest.raises(RuntimeError, match="wiki-map"):
+        process_clippings(vault_root, now=fixed_now, dry_run=False)
+
+    # The source was NOT moved into processed/ — it's still retryable.
+    assert src.exists()
+    assert not (vault_root / "Clippings" / "processed" / "x.md").exists()
+
+
+def test_wiki_map_write_is_atomic_no_partial_file(vault_root: Path, fixed_now) -> None:
+    """MAJOR (A10): the wiki-map write must go through a temp file +
+    os.replace, never a partial/truncated file visible mid-write. We
+    can't easily simulate a real SIGKILL mid-write in a unit test, but
+    we can assert no stray temp file is left behind after a normal run
+    (proves the temp-file is renamed away, not just written in place).
+    """
+    _write_clipping(vault_root, "x.md", "# Topic\n\n…\n")
+    process_clippings(vault_root, now=fixed_now, dry_run=False)
+    leftover_tmp = list(vault_root.glob(".wiki-map.md.*.tmp"))
+    assert leftover_tmp == [], f"temp file(s) left behind: {leftover_tmp}"
+    assert (vault_root / "wiki-map.md").exists()
+
+
+def test_unique_processed_path_same_second_double_collision(tmp_path: Path) -> None:
+    """MAJOR (code review #3 — archive-name disambiguation): even if the
+    *timestamped* candidate is also already taken (two clippings sharing
+    a basename processed within the same wall-clock second), the
+    function must keep disambiguating instead of returning an occupied
+    path.
+    """
+    (tmp_path / "a.md").touch()
+    first = unique_processed_path(tmp_path, "a.md")
+    first.touch()  # simulate: this timestamped name is now also taken
+    second = unique_processed_path(tmp_path, "a.md")
+    assert second != first
+    assert not second.exists()
+    assert second.name.startswith("a-")
+
+
+def test_process_clippings_skips_dotfiles(vault_root: Path, fixed_now) -> None:
+    """MINOR (code review — dotfile skip rule, SKILL.md:54): a dotfile
+    like `.hidden.md` must not be treated as a clipping to process.
+    """
+    (vault_root / "Clippings").mkdir(exist_ok=True)
+    (vault_root / "Clippings" / ".hidden.md").write_text("# Hidden\n", encoding="utf-8")
+    result = process_clippings(vault_root, now=fixed_now, dry_run=False)
+    assert result.processed == []
+    assert (vault_root / "Clippings" / ".hidden.md").exists()  # left untouched
+
+
+def test_process_clippings_reuses_bootstrap_wiki_map_template(
+    vault_root: Path, fixed_now
+) -> None:
+    """MAJOR (code review — wiki-map contract duplication): process_clippings
+    must seed wiki-map.md using the SAME template/markers as `bootstrap`,
+    not a locally-duplicated copy that can drift out of sync.
+    """
+    from _lib.bootstrap import WIKI_MAP_AUTO_END, WIKI_MAP_AUTO_START
+
+    _write_clipping(vault_root, "x.md", "# Topic\n\n…\n")
+    process_clippings(vault_root, now=fixed_now, dry_run=False)
+    text = (vault_root / "wiki-map.md").read_text(encoding="utf-8")
+    assert WIKI_MAP_AUTO_START in text
+    assert WIKI_MAP_AUTO_END in text

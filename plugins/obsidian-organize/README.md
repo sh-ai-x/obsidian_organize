@@ -32,7 +32,7 @@ Once installed, the five skills are available as namespace-prefixed slash comman
 | `obsidian-organize:bootstrap` | Create the canonical vault layout (`Clippings/processed/`, `wiki/`, `wiki-map.md`, `_research/`, `_archive/research/`). Idempotent; refuses to clobber without `--force`. |
 | `obsidian-organize:process_clippings` | Scan `Clippings/` for unprocessed files and create `wiki/<topic>/README.md` + `wiki/<topic>/clippings/<safe-name>.md` per clipping. Moves the source to `Clippings/processed/`. |
 | `obsidian-organize:research` | Gather source material on a topic and write a staged research file at `<vault>/_research/<topic>.md`. |
-| `obsidian-organize:add_wiki` | Promote a staged research file into a canonical topic note at `wiki/<topic>/README.md`, append a row to `wiki-map.md`, and back-link each source. |
+| `obsidian-organize:add_wiki` | Promote a staged research file into a topic note at `topics/<topic>.md` and back-link each source. Independent of `wiki/<topic>/` and `wiki-map.md`. |
 | `obsidian-organize:remove_wiki` | Retire a topic note: move the staged file to `_archive/research/`, drop the `wiki-map.md` row, and strip the back-link marker from each source. |
 
 ### Invocation
@@ -99,11 +99,14 @@ The layout mirrors `hermes-wiki-super`'s directory structure so the same upstrea
 |---|---|
 | `Clippings/` | upstream `process-clippings` (raw input) |
 | `Clippings/processed/` | `obsidian-organize:process_clippings` (moves source here on success) |
-| `wiki/<topic>/README.md` | `obsidian-organize:bootstrap` (template) / `process_clippings` (creates) / `add_wiki` (promotes) |
+| `wiki/<topic>/README.md` | `obsidian-organize:bootstrap` (stub, via `--topics`) / `process_clippings` (real content) |
 | `wiki/<topic>/clippings/` | `obsidian-organize:process_clippings` (per-clipping pages) |
-| `wiki-map.md` | `obsidian-organize:bootstrap` (template) → `process_clippings` (append row) → `add_wiki` (append row) → `remove_wiki` (drop row) |
+| `wiki-map.md` | `obsidian-organize:bootstrap` (template) → `process_clippings` (append row) |
+| `topics/<topic>.md` | `obsidian-organize:add_wiki` (write) |
 | `_research/<topic>.md` | `obsidian-organize:research` (write) → `remove_wiki` (move to `_archive/research/`) |
 | `_archive/research/<topic>-<ISO-8601>.md` | `obsidian-organize:remove_wiki` |
+
+`wiki/<topic>/` (fed by `bootstrap`/`process_clippings`) and `topics/<topic>.md` (fed by `add_wiki`/`remove_wiki`) are two **independent** topic-note locations — `add_wiki` and `remove_wiki` never touch `wiki/` or `wiki-map.md`, and `process_clippings` never touches `topics/`. Which one a given topic ends up in depends on which pipeline produced it (clippings-driven vs. research-driven).
 
 See `skills/bootstrap/references/layout.md` for the pinned directory tree and per-path contracts.
 
@@ -121,14 +124,30 @@ status: staged            # → promoted (by add_wiki) → archived (by remove_w
 ---
 ```
 
-`wiki/<topic>/README.md` (topic note, produced by `add_wiki` or `process_clippings`):
+`topics/<topic>.md` (topic note, produced by `add_wiki`):
 
 ```yaml
 ---
-type: wiki-map            # process_clippings seeds wiki-map.md with this
+topic: <topic>
+created: <ISO-8601>
+updated: <ISO-8601>
+tags: [topic/<topic>]
+sources:
+  - <url-or-path>
+status: active            # → retired (by remove_wiki), with retired_at / retired_to keys
+---
+```
+
+`wiki-map.md` (index, seeded by `bootstrap`, appended to by `process_clippings`):
+
+```yaml
+---
+type: wiki-map
 created: <ISO-8601>
 ---
 ```
+
+`wiki/<topic>/README.md` (LLM-Wiki topic hub, produced by `process_clippings`) has **no frontmatter** — it's plain markdown with a `# <topic>` heading and an auto-marker block for future appends.
 
 `wiki/<topic>/clippings/<safe-name>.md` (per-clipping page, produced by `process_clippings`):
 
@@ -144,7 +163,7 @@ processed: <ISO-8601>
 Source files get a back-link marker appended on promotion and stripped on removal:
 
 ```
-<!-- back-linked from [[wiki/<topic>/README]] on <ISO-8601> -->
+<!-- back-linked from [[topics/<topic>]] on <ISO-8601> -->
 ```
 
 ## Tests
