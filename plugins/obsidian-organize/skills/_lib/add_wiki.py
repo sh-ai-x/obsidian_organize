@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .frontmatter import parse_frontmatter, serialize_frontmatter, FrontmatterDict
+from .io import atomic_write_text
 from .paths import resolve_staged_path, resolve_topic_path, BACKLINK_MARKER_TEMPLATE
 from .slug import normalize_topic_slug, validate_topic_slug
 
@@ -58,7 +59,7 @@ def promote(
     body = _render_body(staged_fm)
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(serialize_frontmatter(topic_fm, body), encoding="utf-8")
+    atomic_write_text(target, serialize_frontmatter(topic_fm, body))
 
     back_links_added: list[Path] = []
     if add_backlinks:
@@ -69,16 +70,16 @@ def promote(
                 continue
             existing = src_path.read_text(encoding="utf-8")
             new = existing.rstrip() + "\n" + marker + "\n"
-            src_path.write_text(new, encoding="utf-8")
+            atomic_write_text(src_path, new)
             back_links_added.append(src_path)
 
     # Mark staged file as promoted.
     staged_fm["status"] = "promoted"
     staged_fm["updated"] = when
     staged_fm["promoted_to"] = str(target.relative_to(vault_root))
-    staged.write_text(
+    atomic_write_text(
+        staged,
         serialize_frontmatter(staged_fm, _body_after_parse(staged_text)),
-        encoding="utf-8",
     )
 
     return AddWikiResult(

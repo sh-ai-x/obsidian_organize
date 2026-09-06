@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .frontmatter import serialize_frontmatter, FrontmatterDict
+from .io import atomic_write_text
 from .paths import resolve_staged_path
 from .slug import normalize_topic_slug, validate_topic_slug
 
@@ -61,7 +62,7 @@ def write_staged_file(
         new_body = body.rstrip() + "\n\n## Appended " + when + "\n\n"
         for note in input.notes:
             new_body += f"> {note}\n"
-        path.write_text(serialize_frontmatter(fm, new_body), encoding="utf-8")
+        atomic_write_text(path, serialize_frontmatter(fm, new_body))
         return ResearchResult(staged_path=path, topic=topic, frontmatter=fm)
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,7 +73,7 @@ def write_staged_file(
         "status": "staged",
     }
     body = _render_body(input.sources, input.notes)
-    path.write_text(serialize_frontmatter(fm, body), encoding="utf-8")
+    atomic_write_text(path, serialize_frontmatter(fm, body))
     return ResearchResult(staged_path=path, topic=topic, frontmatter=fm)
 
 

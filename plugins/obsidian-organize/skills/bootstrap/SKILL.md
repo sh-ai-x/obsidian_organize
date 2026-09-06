@@ -78,6 +78,9 @@ upstream skills (`process-clippings`, `add-wiki`) work unmodified.
 
 - `references/layout.md` — pinned directory tree + each path's contract.
 - `obsidian-organize:research` — produces staged files in `_research/`.
-- `obsidian-organize:add_wiki` — appends a row to `wiki-map.md` on promotion.
+- `obsidian-organize:add_wiki` — promotes staged research into a topic
+  note at `topics/<topic>.md`. It does NOT touch `wiki-map.md` (that
+  index is owned by `process_clippings`); see README.md:109 for the
+  wiki/ vs topics/ separation.
 - `obsidian-organize:remove_wiki` — archives `_research/<topic>.md` to
-  `_archive/research/` and removes the `wiki-map.md` row.
+  `_archive/research/`. Like `add_wiki`, it does NOT touch `wiki-map.md`.

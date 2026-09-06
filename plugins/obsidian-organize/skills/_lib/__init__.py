@@ -12,11 +12,13 @@ from .frontmatter import (
     update_frontmatter_field,
     FrontmatterDict,
 )
+from .io import atomic_write_text
 from .slug import normalize_topic_slug, validate_topic_slug
 from .paths import (
     resolve_staged_path,
     resolve_topic_path,
     resolve_archive_path,
+    safe_filename,
     scan_backlinks,
     BACKLINK_MARKER_TEMPLATE,
 )
@@ -33,6 +35,18 @@ from .remove_wiki import (
     RemoveWikiResult,
     retire,
 )
+from .process_clippings import (
+    ClippingPage,
+    ProcessClippingsResult,
+    extract_topic_slug,
+    process_clippings,
+    render_clipping_page,
+    render_topic_readme,
+    resolve_clipping_page,
+    resolve_processed_path,
+    resolve_topic_dir,
+    unique_processed_path,
+)
 
 __all__ = [
     # frontmatter
@@ -40,6 +54,8 @@ __all__ = [
     "serialize_frontmatter",
     "update_frontmatter_field",
     "FrontmatterDict",
+    # io
+    "atomic_write_text",
     # slug
     "normalize_topic_slug",
     "validate_topic_slug",
@@ -47,6 +63,7 @@ __all__ = [
     "resolve_staged_path",
     "resolve_topic_path",
     "resolve_archive_path",
+    "safe_filename",
     "scan_backlinks",
     "BACKLINK_MARKER_TEMPLATE",
     # research
@@ -59,4 +76,15 @@ __all__ = [
     # remove_wiki
     "RemoveWikiResult",
     "retire",
+    # process_clippings
+    "ClippingPage",
+    "ProcessClippingsResult",
+    "extract_topic_slug",
+    "process_clippings",
+    "render_clipping_page",
+    "render_topic_readme",
+    "resolve_clipping_page",
+    "resolve_processed_path",
+    "resolve_topic_dir",
+    "unique_processed_path",
 ]
