@@ -42,6 +42,19 @@ def test_extract_topic_slug_from_h1() -> None:
     assert extract_topic_slug(text, "2026년_09월_05일_AI_보안_취업_로드맵.md") == "ai-security-career-roadmap"
 
 
+def test_extract_topic_slug_strips_utf8_bom() -> None:
+    """MINOR 7: a leading UTF-8 BOM must not push the H1 past the
+    scan — otherwise the first line is "﻿# Heading" which doesn't
+    match the H1 prefix and the function silently falls back to the
+    filename (a misleading topic slug).
+    """
+    text_bom = "﻿# AI Security Career Roadmap\n\nBody…"
+    assert (
+        extract_topic_slug(text_bom, "ignored_filename.md")
+        == "ai-security-career-roadmap"
+    )
+
+
 def test_extract_topic_slug_from_filename_when_no_h1() -> None:
     text = "no heading here, just prose"
     assert extract_topic_slug(text, "LangChain_Research_2026-09-05.md") == "langchain-research-2026-09-05"
@@ -121,6 +134,7 @@ def test_process_clippings_empty_clippings_is_noop(vault_root: Path, fixed_now) 
     result = process_clippings(vault_root, now=fixed_now, dry_run=False)
     assert result.processed == []
     assert result.skipped == []
+    assert result.failed == []
     assert not (vault_root / "wiki").exists()
 
 
@@ -283,6 +297,40 @@ def test_extract_topic_slug_rejects_dot_only_traversal() -> None:
         assert resolved.parent == Path("/vault/wiki")
 
 
+def test_extract_topic_slug_rejects_markdown_hostile() -> None:
+    """MAJOR 1 (markdown / wikilink / HTML injection): a last-resort slug
+    interpolated into a wikilink `[[wiki/<topic>/README|<topic>]]` and
+    a `# <topic>` heading must never smuggle markdown-hostile
+    characters. These are the chars that, if left in, would either
+    break the link / heading markup or allow HTML / wikilink payloads
+    to render in Obsidian.
+    """
+    for filename in (
+        "<script>.md",
+        "a]b.md",
+        "a[b.md",
+        "a|b.md",
+        "*star*.md",
+        "`code`.md",
+        "#hash.md",
+        "!bang.md",
+        "&amp.md",
+        "(paren).md",
+        "<img src=x onerror=alert(1)>.md",
+        "[link](http://evil).md",
+    ):
+        slug = extract_topic_slug("no heading, plain body\n", filename)
+        # None of the markdown-hostile chars survive.
+        for bad in ("<", ">", "|", "[", "]", "(", ")", "*", "`", "#", "!", "&"):
+            assert bad not in slug, (
+                f"filename {filename!r} produced slug {slug!r} "
+                f"containing markdown-hostile char {bad!r}"
+            )
+        # The slug still resolves INSIDE `wiki/`, never up or out.
+        resolved = resolve_topic_dir(Path("/vault"), slug)
+        assert resolved.parent == Path("/vault/wiki")
+
+
 def test_process_clippings_dot_only_stem_stays_inside_wiki(
     vault_root: Path, fixed_now
 ) -> None:
@@ -314,10 +362,10 @@ def test_process_clippings_wiki_map_failure_leaves_source_unmoved(
     """
     import importlib
 
-    # `import _lib.process_clippings as x` would resolve to the
-    # re-exported *function* of the same name in _lib/__init__.py
-    # (attribute-access collision), not the submodule — go through
-    # importlib to get the actual submodule object unambiguously.
+    # `process_clippings` does `from .bootstrap import append_wiki_map_row`,
+    # so patching the bootstrap module attribute doesn't affect the
+    # name already bound inside `_lib.process_clippings`. Patch the
+    # process_clippings module's own binding.
     pc_module = importlib.import_module("_lib.process_clippings")
 
     src = _write_clipping(vault_root, "x.md", "# Topic\n\n…\n")
@@ -325,7 +373,7 @@ def test_process_clippings_wiki_map_failure_leaves_source_unmoved(
     def _boom(*args, **kwargs):
         raise OSError("simulated disk-full mid wiki-map write")
 
-    monkeypatch.setattr(pc_module, "_append_wiki_map_row", _boom)
+    monkeypatch.setattr(pc_module, "append_wiki_map_row", _boom)
 
     with pytest.raises(RuntimeError, match="wiki-map"):
         process_clippings(vault_root, now=fixed_now, dry_run=False)
@@ -390,3 +438,75 @@ def test_process_clippings_reuses_bootstrap_wiki_map_template(
     text = (vault_root / "wiki-map.md").read_text(encoding="utf-8")
     assert WIKI_MAP_AUTO_START in text
     assert WIKI_MAP_AUTO_END in text
+
+
+def test_wiki_map_append_is_idempotent_on_rename_failure(
+    vault_root: Path, fixed_now, monkeypatch
+) -> None:
+    """MINOR 6: if the wiki-map row was appended but `src.rename`
+    fails afterward, a re-run of process_clippings on the same input
+    must NOT duplicate the row in wiki-map.md — idempotent append is
+    what makes the rename-after-append ordering retry-safe.
+    """
+    import importlib
+
+    bootstrap_module = importlib.import_module("_lib.bootstrap")
+
+    src = _write_clipping(vault_root, "x.md", "# Topic\n\n…\n")
+    real_rename = Path.rename
+
+    def _rename_once(self, target):
+        # First call (the real run) fails; second call (the re-run)
+        # succeeds so we can verify the row is not duplicated.
+        if _rename_once.calls == 0:
+            _rename_once.calls += 1
+            raise OSError("simulated rename failure")
+        return real_rename(self, target)
+
+    _rename_once.calls = 0
+    monkeypatch.setattr(Path, "rename", _rename_once)
+
+    # First run: wiki-map row appended, rename fails → RuntimeError.
+    with pytest.raises(RuntimeError, match="archive"):
+        process_clippings(vault_root, now=fixed_now, dry_run=False)
+
+    # Wiki-map row IS present (the append succeeded before rename failed).
+    text = (vault_root / "wiki-map.md").read_text(encoding="utf-8")
+    assert "[[wiki/topic/README|topic]]" in text
+    rows_before = text.count("[[wiki/topic/README|topic]]")
+    assert rows_before == 1
+
+    # Second run: append is now idempotent, rename succeeds.
+    process_clippings(vault_root, now=fixed_now, dry_run=False)
+    text_after = (vault_root / "wiki-map.md").read_text(encoding="utf-8")
+    assert text_after.count("[[wiki/topic/README|topic]]") == 1
+    assert not src.exists()  # source archived on re-run
+
+
+def test_wiki_map_creation_threads_now_parameter(vault_root: Path) -> None:
+    """MINOR 8: when process_clippings seeds wiki-map.md for the first
+    time, the `created:` frontmatter field must reflect the `now`
+    parameter — otherwise the deterministic timestamp in tests (and
+    real callers using a fixed `now`) leaks into a wall-clock value
+    and breaks reproducibility.
+    """
+    from datetime import datetime, timezone
+
+    fixed = datetime(2026, 9, 5, 12, 0, 0, tzinfo=timezone.utc)
+    _write_clipping(vault_root, "x.md", "# Topic\n\n…\n")
+    process_clippings(vault_root, now=fixed, dry_run=False)
+    text = (vault_root / "wiki-map.md").read_text(encoding="utf-8")
+    assert "created: 2026-09-05T12:00:00Z" in text
+
+
+def test_process_clippings_missing_vault_root_raises(
+    tmp_path: Path, fixed_now
+) -> None:
+    """MINOR 5: a missing vault_root must surface as a distinct error
+    (so the documented 'Set OBSIDIAN_VAULT or pass --vault <path>'
+    message is reachable from the helper) — not silently return the
+    same empty result as a missing Clippings/ directory.
+    """
+    nonexistent = tmp_path / "does-not-exist"
+    with pytest.raises(FileNotFoundError, match="Set OBSIDIAN_VAULT"):
+        process_clippings(nonexistent, now=fixed_now, dry_run=False)

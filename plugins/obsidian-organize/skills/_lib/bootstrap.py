@@ -6,9 +6,14 @@ helper that tests + the SKILL.md both delegate to.
 
 from __future__ import annotations
 
+import logging
+import os
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 WIKI_MAP_AUTO_START = "<!-- obsidian-organize:wiki-map:auto-start -->"
 WIKI_MAP_AUTO_END = "<!-- obsidian-organize:wiki-map:auto-end -->"
@@ -132,3 +137,97 @@ def _slugify(name: str) -> str:
     s = re.sub(r"[^a-z0-9-]", "", s)
     s = re.sub(r"-+", "-", s).strip("-")
     return s
+
+
+# --------------------------------------------------------------------------- #
+# Wiki-map row append (single source of truth for seed-and-append)
+# --------------------------------------------------------------------------- #
+
+
+def append_wiki_map_row(
+    vault_root: Path,
+    topic: str,
+    source_filename: str,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """Append one row to `wiki-map.md`, seeding the file from
+    `WIKI_MAP_TEMPLATE` first if it doesn't exist.
+
+    Returns `True` if a row was appended, `False` if an identical row
+    already exists (idempotent — re-running after a partial failure
+    must not duplicate rows).
+
+    Centralised here so `process_clippings` and any future caller share
+    the same seed template, idempotency rule, and atomic-write contract.
+    The `now` parameter threads the caller's timestamp through to the
+    `created:` field when we seed the file for the first time; on
+    subsequent appends the existing `created:` is preserved (the file
+    already exists, we only add rows).
+
+    The write is atomic (temp file + `os.replace`) so a crash or SIGKILL
+    mid-write can never leave `wiki-map.md` truncated or corrupted.
+    """
+    map_path = vault_root / "wiki-map.md"
+    when = now or datetime.now(timezone.utc)
+    when_iso = when.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    if map_path.exists():
+        text = map_path.read_text(encoding="utf-8")
+    else:
+        text = WIKI_MAP_TEMPLATE.format(
+            created=when_iso,
+            WIKI_MAP_AUTO_START=WIKI_MAP_AUTO_START,
+            WIKI_MAP_AUTO_END=WIKI_MAP_AUTO_END,
+        )
+
+    row = f"- [[wiki/{topic}/README|{topic}]] — processed `{source_filename}`"
+
+    # Idempotency: if the exact row already exists, do nothing. Catches
+    # the failure mode where the wiki-map append succeeded but the
+    # subsequent `src.rename` failed — re-running would otherwise
+    # duplicate the row.
+    if row in text:
+        logger.info("wiki-map row already present, skipping append: %s", row)
+        return False
+
+    if WIKI_MAP_AUTO_END in text:
+        text = text.replace(WIKI_MAP_AUTO_END, f"{row}\n{WIKI_MAP_AUTO_END}")
+    else:
+        text += f"\n{row}\n"
+
+    _atomic_write_text(map_path, text)
+    return True
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write `text` to `path` atomically via temp-file + `os.replace`.
+
+    `os.fdopen` can raise (e.g. invalid encoding on this platform);
+    if it raises, the raw file descriptor returned by `mkstemp` would
+    leak. Wrap the `os.fdopen` call so we always close the raw fd on
+    the error path before re-raising.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
+    )
+    try:
+        try:
+            f = os.fdopen(fd, "w", encoding="utf-8")
+        except BaseException:
+            # os.fdopen failed before taking ownership of `fd`; close
+            # the raw fd ourselves so it doesn't leak.
+            os.close(fd)
+            raise
+        with f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise

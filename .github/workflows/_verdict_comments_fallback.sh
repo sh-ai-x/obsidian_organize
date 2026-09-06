@@ -29,9 +29,16 @@
 # `.author.login // .user.login // .login // ""` fallback was duplicated
 # in jq (here) and in `_is_claude_author` (Python); drift risk is now
 # eliminated because only the Python helper knows about author shape.
-set -uo pipefail
+set -euo pipefail
 
 PR_NUMBER="${1:?usage: $0 <PR_NUMBER>}"
+# PR_NUMBER must be an integer — gh pr view rejects other strings and a
+# non-integer here would silently produce an empty comments payload
+# (and make the script's "no verdict recovered" path indistinguishable
+# from a transient gh failure). Validate before passing to gh.
+case "$PR_NUMBER" in
+  ''|*[!0-9]*) echo "::error::${JOB_NAME:-review} PR_NUMBER must be an integer: got '$PR_NUMBER'" >&2; exit 64 ;;
+esac
 CUTOFF="${CUTOFF:-}"
 JOB_NAME="${JOB_NAME:-review}"
 WORKSPACE="${WORKSPACE:-${GITHUB_WORKSPACE:-$(pwd)}}"
@@ -41,16 +48,20 @@ SLEEP_SECONDS="${SLEEP_SECONDS:-5}"
 HELPER="${WORKSPACE}/.github/workflows/_verdict_from_comment.py"
 
 comment_verdict=""
-gh_err=""
+# Per-attempt scratch file for gh stderr — captured from the SAME
+# `gh pr view` call that produces the comments payload, so the
+# diagnostics and the data are guaranteed to come from one fetch
+# (previously two separate calls could disagree if a transient error
+# happened between them, producing a ghost warning with no payload).
+gh_err_file="$(mktemp)"
+trap 'rm -f "$gh_err_file"' EXIT
 for attempt in $(seq 1 "$ATTEMPTS"); do
   echo "::notice::${JOB_NAME} PR-comments fallback attempt=${attempt}/${ATTEMPTS}" >&2
-  # Capture gh stderr once and surface as ::warning:: so a transient
-  # auth/permission/rate-limit incident is observable rather than
-  # being silently discarded across all retry attempts.
-  gh_err=$(gh pr view "$PR_NUMBER" --json comments 2>&1 >/dev/null) || true
+  : >"$gh_err_file"
   comments_json=$(gh pr view "$PR_NUMBER" --json comments \
     --jq '[.comments[] | {body, createdAt, author, user, login}]' \
-    2>/dev/null || true)
+    2>"$gh_err_file") || true
+  gh_err=$(cat "$gh_err_file")
   if [ -n "$gh_err" ]; then
     echo "::warning::${JOB_NAME} gh pr view stderr (attempt=${attempt}): ${gh_err}" >&2
   fi

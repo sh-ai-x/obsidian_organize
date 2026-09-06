@@ -29,14 +29,12 @@ reads. `--dry-run` short-circuits step 2 onwards.
 from __future__ import annotations
 
 import logging
-import os
 import re
-import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .bootstrap import WIKI_MAP_AUTO_END, WIKI_MAP_AUTO_START, WIKI_MAP_TEMPLATE
+from .bootstrap import append_wiki_map_row
 from .frontmatter import serialize_frontmatter
 from .slug import normalize_topic_slug
 
@@ -62,7 +60,8 @@ class ClippingPage:
 @dataclass(frozen=True)
 class ProcessClippingsResult:
     processed: list[ClippingPage]
-    skipped: list[Path]  # e.g. files inside `processed/`, dotfiles, empty topic
+    skipped: list[Path]  # intentionally not processed (input unprocessable)
+    failed: list[tuple[Path, str]]  # (path, reason) — tried but couldn't process
 
 
 # --------------------------------------------------------------------------- #
@@ -186,13 +185,22 @@ def _sanitize_last_resort_slug(s: str) -> str:
     already safe), this branch runs when normalization stripped every
     character — e.g. an H1 or filename stem made entirely of non-ASCII
     text. It must still guarantee the result can never escape the
-    `wiki/<topic>/` directory:
+    `wiki/<topic>/` directory AND cannot smuggle markdown / wikilink
+    syntax into the rendered output:
 
     - path separators are never valid inside a single path segment
     - a slug made entirely of dots (`.`, `..`, `...`) resolves to the
       current or parent directory when joined onto a path — CVE-class
       path traversal if left unchecked (`wiki/..` == the vault root).
+    - markdown / wikilink-hostile chars (`< > | [ ] ( ) * ` ` # ! &`)
+      would either break the rendered `[[wiki/<topic>/README|<topic>]]`
+      link / `# <topic>` heading, or smuggle HTML / wikilink payloads.
+      We strip them all and collapse to hyphen so non-ASCII content
+      still survives.
     """
+    # Strip markdown / wikilink-hostile chars first (any order works since
+    # the path-separator replacement below also covers `/` and `\`).
+    s = re.sub(r"[<>|\[\]()*`#!&]", "-", s)
     s = s.replace("/", "-").replace("\\", "-")
     s = re.sub(r"[\s_]+", "-", s).strip()
     s = re.sub(r"-+", "-", s).strip("-")
@@ -208,6 +216,12 @@ def _sanitize_last_resort_slug(s: str) -> str:
 
 def extract_topic_slug(text: str, filename: str) -> str:
     """Derive a topic slug from the clipping's first H1 (filename fallback)."""
+    # Strip a leading UTF-8 BOM if present — otherwise the first line
+    # starts with "﻿# Heading" which doesn't match the H1 prefix
+    # and the function silently falls through to the filename fallback,
+    # producing a misleading topic slug.
+    if text.startswith("﻿"):
+        text = text[1:]
     for line in text.splitlines():
         line = line.strip()
         if line.startswith("# "):
@@ -246,9 +260,19 @@ def process_clippings(
     when = now or datetime.now(timezone.utc)
     when_iso = when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    if not vault_root.exists():
+        # Distinct from "Clippings/ doesn't exist" — vault_root unset /
+        # wrong path is a user-facing configuration error, not a no-op.
+        # Surface the documented message so SKILL.md's "Vault root unset"
+        # guidance is actually reachable from this helper.
+        raise FileNotFoundError(
+            f"vault root not found: {vault_root} "
+            "(Set OBSIDIAN_VAULT or pass --vault <path>)"
+        )
+
     clippings_dir = vault_root / "Clippings"
     if not clippings_dir.exists():
-        return ProcessClippingsResult(processed=[], skipped=[])
+        return ProcessClippingsResult(processed=[], skipped=[], failed=[])
 
     candidates = sorted(
         p
@@ -258,6 +282,7 @@ def process_clippings(
 
     processed: list[ClippingPage] = []
     skipped: list[Path] = []
+    failed: list[tuple[Path, str]] = []
     topics_seen: set[str] = set()
     processed_dir = clippings_dir / "processed"
 
@@ -266,7 +291,7 @@ def process_clippings(
             text = src.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as e:
             logger.warning("skipping %s: failed to read as UTF-8 text: %s", src, e)
-            skipped.append(src)
+            failed.append((src, f"read error: {e}"))
             continue
 
         topic = extract_topic_slug(text, src.name)
@@ -304,7 +329,11 @@ def process_clippings(
         )
 
         if dry_run:
-            moved = processed_dir / _safe_filename(src.name)
+            # Mirror the real run's collision logic so callers see the
+            # same `moved_to` the real run would have used (dry-run is
+            # only useful when its plan matches reality).
+            processed_dir.mkdir(parents=True, exist_ok=True)
+            moved = unique_processed_path(processed_dir, src.name)
             processed.append(
                 ClippingPage(
                     source=src,
@@ -332,7 +361,7 @@ def process_clippings(
         # page and topic README already written are harmless no-ops to
         # recreate.
         try:
-            _append_wiki_map_row(vault_root, topic, src.name)
+            append_wiki_map_row(vault_root, topic, src.name, now=when)
         except OSError as e:
             raise RuntimeError(
                 f"failed to update wiki-map.md for topic {topic!r} "
@@ -361,52 +390,11 @@ def process_clippings(
 
     if skipped:
         logger.warning("process_clippings: %d file(s) skipped: %s", len(skipped), skipped)
-
-    return ProcessClippingsResult(processed=processed, skipped=skipped)
-
-
-def _append_wiki_map_row(vault_root: Path, topic: str, source_filename: str) -> None:
-    """Append one row to `wiki-map.md`, creating it from the shared template
-    if missing. The write is atomic (temp file + `os.replace`) so a crash
-    or SIGKILL mid-write can never leave `wiki-map.md` truncated or
-    corrupted — the file is either the old complete content or the new
-    complete content, never a partial write.
-    """
-    map_path = vault_root / "wiki-map.md"
-    if map_path.exists():
-        text = map_path.read_text(encoding="utf-8")
-    else:
-        created = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        text = WIKI_MAP_TEMPLATE.format(
-            created=created,
-            WIKI_MAP_AUTO_START=WIKI_MAP_AUTO_START,
-            WIKI_MAP_AUTO_END=WIKI_MAP_AUTO_END,
+    if failed:
+        logger.warning(
+            "process_clippings: %d file(s) failed: %s",
+            len(failed),
+            [(str(p), r) for p, r in failed],
         )
 
-    row = f"- [[wiki/{topic}/README|{topic}]] — processed `{source_filename}`"
-    if WIKI_MAP_AUTO_END in text:
-        text = text.replace(WIKI_MAP_AUTO_END, f"{row}\n{WIKI_MAP_AUTO_END}")
-    else:
-        text += f"\n{row}\n"
-
-    _atomic_write_text(map_path, text)
-
-
-def _atomic_write_text(path: Path, text: str) -> None:
-    """Write `text` to `path` atomically via temp-file + `os.replace`."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_name, path)
-    except BaseException:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
+    return ProcessClippingsResult(processed=processed, skipped=skipped, failed=failed)

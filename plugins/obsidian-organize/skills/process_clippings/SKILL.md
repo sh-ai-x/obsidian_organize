@@ -16,10 +16,10 @@ always excluded) and for every `.md` file there:
    format modeled on `hermes-wiki-super` (see `references/wiki-format.md`).
 3. Writes `wiki/<topic>/clippings/<safe-filename>.md` with a
    `type: clipping` frontmatter envelope + the original body verbatim.
-4. Moves the source to `Clippings/processed/<safe-filename>.md`,
-   disambiguating with an ISO-8601 suffix if the target already exists.
-5. Appends a row to `wiki-map.md` between the auto-start / auto-end
+4. Appends a row to `wiki-map.md` between the auto-start / auto-end
    markers (or seeds the file with the template if it doesn't exist yet).
+5. Moves the source to `Clippings/processed/<safe-filename>.md`,
+   disambiguating with an ISO-8601 suffix if the target already exists.
 
 The skill is **additive** — it sits between the upstream
 `hermes-wiki-super/process-clippings` skill (or whatever tool drops
@@ -36,12 +36,6 @@ skill only writes the topic-README `> description` line, if asked.
 Optional flags:
 - `--dry-run` — print the plan (per-clipping topic + target paths),
   do not write or move anything.
-- `--include-processed` — also re-process files in `Clippings/processed/`
-  (default: skip them). Useful after a manual restore.
-- `--topic-override <slug>` — force every clipping in this run to land
-  under the named topic (rare; default is per-clipping H1 / filename).
-- `--no-wiki-map` — skip the `wiki-map.md` row append (useful when the
-  vault uses a different index format).
 
 The vault root resolves from `OBSIDIAN_VAULT` (env) or `--vault <path>`
 and the skill fails with a clear message if neither is set.
@@ -59,9 +53,9 @@ and the skill fails with a clear message if neither is set.
       template (`render_topic_readme`).
    4. Render the per-clipping page via `render_clipping_page`
       (frontmatter envelope + body).
-   5. Compute the destination in `Clippings/processed/` via
+   5. Append a row to `wiki-map.md` (`_append_wiki_map_row`).
+   6. Compute the destination in `Clippings/processed/` via
       `unique_processed_path`; rename the source into it.
-   6. Append a row to `wiki-map.md` (`_append_wiki_map_row`).
 4. Print a summary: how many clippings processed, the per-clipping
    `(topic, source, moved_to)` triple, and any skipped files.
 
