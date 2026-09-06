@@ -33,6 +33,11 @@ PR head-commit timestamp (PR-mode) or pull_request.updated_at
 the PR lifecycle. Older comments from previous pushes are ignored
 to avoid resurrecting stale verdicts (the #244 bug).
 
+Selection order: among the comments that pass the author and cutoff
+filters, the NEWEST one wins. The payload arrives oldest-first, so
+`main` sorts explicitly rather than trusting input order -- see the
+comment on the sort in `main` for the false-Approve this prevents.
+
 Author matching accepts ANY of `author.login` (modern `gh pr view
 --json comments` schema), the legacy `user.login` (older `gh api
 .../issues/.../comments` payloads), or a top-level `login` string on
@@ -178,10 +183,29 @@ def main() -> int:
         print("stdin must decode to a JSON array of comment objects", file=sys.stderr)
         return 2
     cutoff = _parse_iso(os.environ.get(CUTOFF_ENV, ""))
-    # Newest-first: gh CLI's default ordering is reverse-chronological,
-    # but we don't depend on it (sort defensively so the FIRST matching
-    # comment is the latest one).
-    for c in comments:
+    # Newest-first. This sort is load-bearing, not defensive polish:
+    # `gh pr view --json comments` returns comments OLDEST-first, so
+    # iterating the payload as-given returns the oldest post-cutoff
+    # verdict. That produced a false `Approve` on a commit whose real
+    # review body said `Changes Requested` -- a stray terse
+    # `Verdict: Approve` comment predated the real summary by ~1 minute
+    # and won. The gate then reported green for a Changes-Requested
+    # review, which is the worst possible failure direction for a
+    # review gate.
+    #
+    # Comments that cannot be dated sort last (they are already
+    # excluded by `_after_cutoff` whenever a cutoff is set; the
+    # `datetime.min` floor only decides their relative order in the
+    # no-cutoff case, where oldest-last is still the safer default).
+    def _sort_key(c: object) -> datetime:
+        ts = _parse_iso(c.get("createdAt", "")) if isinstance(c, dict) else None
+        if ts is None:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts
+
+    for c in sorted(comments, key=_sort_key, reverse=True):
         if not _is_claude_author(c):
             continue
         if not _after_cutoff(c, cutoff):

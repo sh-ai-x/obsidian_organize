@@ -222,11 +222,14 @@ def _sanitize_last_resort_slug(s: str) -> str:
 
 def extract_topic_slug(text: str, filename: str) -> str:
     """Derive a topic slug from the clipping's first H1 (filename fallback)."""
-    # Strip a leading UTF-8 BOM if present — otherwise the first line
-    # starts with "﻿# Heading" which doesn't match the H1 prefix
-    # and the function silently falls through to the filename fallback,
-    # producing a misleading topic slug.
-    if text.startswith("﻿"):
+    # Strip a leading UTF-8 BOM if present -- otherwise the first line
+    # starts with U+FEFF followed by "# Heading", which doesn't match the
+    # H1 prefix, and the function silently falls through to the filename
+    # fallback, producing a misleading topic slug.
+    # Both the guard below and this comment avoid embedding a raw BOM in
+    # this source file: an editor that strips BOM on save (or saves as
+    # Latin-1) would otherwise mangle them (review nit n1).
+    if text.startswith("\ufeff"):
         text = text[1:]
     for line in text.splitlines():
         line = line.strip()

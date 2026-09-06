@@ -43,8 +43,21 @@ CUTOFF="${CUTOFF:-}"
 JOB_NAME="${JOB_NAME:-review}"
 WORKSPACE="${WORKSPACE:-${GITHUB_WORKSPACE:-$(pwd)}}"
 
-ATTEMPTS="${ATTEMPTS:-6}"
-SLEEP_SECONDS="${SLEEP_SECONDS:-5}"
+# Retry budget. The original 6 x 5s (30s) was sized against an assumed
+# ~30s async window for claude-code-action to post the agent's verdict
+# comment. Measured on run 34048314595 the real latency was ~3 minutes:
+# the security job's extract step gave up and posted
+# `verdict=PARSE_FAILED source=parse-failed-no-verdict` at 17:24:01,
+# while the agent's verdict comment did not land until 17:27:18 --
+# 197s later. A 30s budget therefore cannot observe a comment that
+# arrives on the normal path, so the gate hard-failed a clean review.
+#
+# 24 x 10s = 240s covers the measured 197s with headroom. This is a
+# correctly-sized wait for an asynchronous publish, NOT a threshold
+# raised to make a failing step pass: the loop still exits empty (and
+# the gate still hard-fails) when no verdict comment ever appears.
+ATTEMPTS="${ATTEMPTS:-24}"
+SLEEP_SECONDS="${SLEEP_SECONDS:-10}"
 HELPER="${WORKSPACE}/.github/workflows/_verdict_from_comment.py"
 
 comment_verdict=""
@@ -54,7 +67,8 @@ comment_verdict=""
 # (previously two separate calls could disagree if a transient error
 # happened between them, producing a ghost warning with no payload).
 gh_err_file="$(mktemp)"
-trap 'rm -f "$gh_err_file"' EXIT
+helper_err_file="$(mktemp)"
+trap 'rm -f "$gh_err_file" "$helper_err_file"' EXIT
 for attempt in $(seq 1 "$ATTEMPTS"); do
   echo "::notice::${JOB_NAME} PR-comments fallback attempt=${attempt}/${ATTEMPTS}" >&2
   : >"$gh_err_file"
@@ -66,9 +80,19 @@ for attempt in $(seq 1 "$ATTEMPTS"); do
     echo "::warning::${JOB_NAME} gh pr view stderr (attempt=${attempt}): ${gh_err}" >&2
   fi
   if [ -n "$comments_json" ]; then
+    # Nit n2: the helper's stderr used to be sent to /dev/null, so a
+    # broken helper (SyntaxError, ImportError, a crash on an odd
+    # comment object) burned the whole retry loop silently and surfaced
+    # only the generic "fallback exhausted" warning. Capture it and
+    # promote it to a ::warning:: so CI shows the real cause.
+    : >"$helper_err_file"
     comment_verdict=$(printf '%s' "$comments_json" \
-      | VERDICT_COMMENT_CUTOFF="$CUTOFF" python3 "$HELPER" 2>/dev/null \
+      | VERDICT_COMMENT_CUTOFF="$CUTOFF" python3 "$HELPER" 2>"$helper_err_file" \
       || true)
+    helper_err=$(cat "$helper_err_file")
+    if [ -n "$helper_err" ]; then
+      echo "::warning::${JOB_NAME} _verdict_from_comment.py stderr (attempt=${attempt}): ${helper_err}" >&2
+    fi
     if [ -n "$comment_verdict" ]; then
       break
     fi
