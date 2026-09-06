@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "phase": "bootstrap",
+  "hooks": {
+    "PreToolUse:Write|Edit|MultiEdit": ["worktree-guard.sh", "tdd-guard.sh", "destructive-confirm.sh"],
+    "PreToolUse:Bash": ["git-guard.sh", "destructive-confirm.sh"],
+    "PostToolUse:Write|Edit|MultiEdit": ["secret-scan.sh"],
+    "SessionStart": ["session-start-check.sh"],
+    "Stop": ["stop-verify.sh"]
+  },
+  "wrote_at": "2026-09-05T08:21:40Z"
+}

@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0.0",
+  "tdd_guard_enabled": true,
+  "main_push_block_enabled": true,
+  "notes": "Bootstrap complete; L1 enforced for production work.",
+  "updated_at": "2026-09-05T08:26:42Z"
+}
