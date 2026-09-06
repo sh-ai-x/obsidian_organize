@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .io import atomic_write_text
+
 FrontmatterDict = dict[str, Any]
 
 _FENCE = "---"
@@ -51,7 +53,7 @@ def update_frontmatter_field(
     text = path.read_text(encoding="utf-8")
     fm, body = parse_frontmatter(text)
     fm.update(updates)
-    path.write_text(serialize_frontmatter(fm, body), encoding="utf-8")
+    atomic_write_text(path, serialize_frontmatter(fm, body))
     return fm
 
 

@@ -61,11 +61,20 @@ def test_extract_topic_slug_from_filename_when_no_h1() -> None:
 
 
 def test_extract_topic_slug_handles_non_ascii() -> None:
-    # Korean / mixed-script headings collapse to a slug-friendly form; if the
-    # result is empty (no ASCII chars survived), fall back to the filename.
+    """The H1 is non-ASCII-only so `normalize_topic_slug` strips it to "".
+    Falls back to the filename stem; the stem is also non-ASCII-only so
+    `normalize_topic_slug` returns "" again; the function then takes
+    `_sanitize_last_resort_slug` — which preserves non-ASCII letters
+    while still replacing `_` with `-` (a markdown-hostile char in
+    some contexts) and stripping `/`, `\\`, etc. The expected value
+    is therefore `"한국-보안-리서치"` — every `_` in the original stem
+    collapsed to `-`, and the resulting string survives as a path
+    segment because modern filesystems handle Unicode in directory
+    names.
+    """
     text = "# 한경 보안 리서치\n\n"
     slug = extract_topic_slug(text, "한국_보안_리서치.md")
-    assert slug == "한국-보안-리서치" or slug == "한국-보안-리서치"
+    assert slug == "한국-보안-리서치"
 
 
 def test_render_topic_readme_template() -> None:
@@ -143,7 +152,7 @@ def test_process_clippings_single_clipping_creates_wiki_entry(
 ) -> None:
     src = _write_clipping(
         vault_root,
-        "2026-09-05_AI_Security_Research.md",
+        "2026-09-05-AI-Security-Research.md",
         "# AI Security Research\n\nBody line 1.\nBody line 2.\n",
     )
     result = process_clippings(vault_root, now=fixed_now, dry_run=False)
@@ -164,7 +173,7 @@ def test_process_clippings_single_clipping_creates_wiki_entry(
         / "wiki"
         / "ai-security-research"
         / "clippings"
-        / "2026-09-05_AI_Security_Research.md"
+        / "2026-09-05-AI-Security-Research.md"
     )
     page_text = page.read_text(encoding="utf-8")
     assert "type: clipping" in page_text
@@ -173,7 +182,7 @@ def test_process_clippings_single_clipping_creates_wiki_entry(
 
     # Source moved to processed/
     assert not src.exists()
-    assert (vault_root / "Clippings" / "processed" / "2026-09-05_AI_Security_Research.md").exists()
+    assert (vault_root / "Clippings" / "processed" / "2026-09-05-AI-Security-Research.md").exists()
 
 
 def test_process_clippings_appends_wiki_map_row(vault_root: Path, fixed_now) -> None:
@@ -255,6 +264,10 @@ def test_process_clippings_dry_run_makes_no_changes(
     assert len(result.processed) == 1  # plan is reported
     assert src.exists()  # file NOT moved
     assert not (vault_root / "wiki").exists()  # no wiki created
+    # SKILL.md advertises dry-run as side-effect-free: `Clippings/processed/`
+    # must NOT be created on a dry run (it would otherwise leak an empty
+    # directory into the vault on every dry-run invocation).
+    assert not (vault_root / "Clippings" / "processed").exists()
 
 
 def test_process_clippings_is_idempotent(vault_root: Path, fixed_now) -> None:
@@ -448,10 +461,6 @@ def test_wiki_map_append_is_idempotent_on_rename_failure(
     must NOT duplicate the row in wiki-map.md — idempotent append is
     what makes the rename-after-append ordering retry-safe.
     """
-    import importlib
-
-    bootstrap_module = importlib.import_module("_lib.bootstrap")
-
     src = _write_clipping(vault_root, "x.md", "# Topic\n\n…\n")
     real_rename = Path.rename
 
@@ -510,3 +519,96 @@ def test_process_clippings_missing_vault_root_raises(
     nonexistent = tmp_path / "does-not-exist"
     with pytest.raises(FileNotFoundError, match="Set OBSIDIAN_VAULT"):
         process_clippings(nonexistent, now=fixed_now, dry_run=False)
+
+
+def test_safe_filename_strips_markdown_hostile_chars() -> None:
+    """MINOR 4: `_safe_filename` must strip markdown-hostile chars
+    (` * ~ _ [ ] | # `) in addition to the filesystem-hostile set, so
+    a hostile filename cannot break a backtick inline-code span (in
+    `wiki-map.md`) or smuggle markdown / wikilink / HTML payloads.
+    """
+    from _lib.paths import safe_filename
+
+    # Each entry: (input, must NOT contain these chars after sanitization).
+    cases = [
+        ("a`b`c.md", set("`")),
+        ("*star*.md", {"*"}),
+        ("~tilde~.md", {"~"}),
+        ("snake_case.md", set()),  # _ is allowed in plain filenames; the
+                                   # wiki-map row is where this matters.
+        ("[brackets].md", {"[", "]"}),
+        ("hash#tag.md", {"#"}),
+        ("pipe|char.md", {"|"}),
+        ("`code`.md", set("`")),
+    ]
+    for raw, forbidden in cases:
+        out = safe_filename(raw)
+        for ch in forbidden:
+            assert ch not in out, (
+                f"safe_filename({raw!r}) = {out!r} still contains {ch!r}"
+            )
+        # The file extension is preserved.
+        assert out.endswith(".md"), f"safe_filename({raw!r}) = {out!r} lost extension"
+
+
+def test_wiki_map_row_sanitizes_hostile_source_filename(
+    vault_root: Path, fixed_now
+) -> None:
+    """MINOR 4 (end-to-end): `bootstrap.append_wiki_map_row`
+    interpolates the source filename into a backtick inline-code span.
+    A hostile filename (containing backticks / `*` / `_` / `[]` / `|`
+    / `#`) must not break the row or leak as raw markdown. The
+    sanitized form replaces each hostile char with `-` so the row
+    parses as a single inline-code token and the markdown renders
+    correctly in Obsidian.
+    """
+    _write_clipping(vault_root, "evil`name`*_#[1].md", "# Topic\n\nbody\n")
+    process_clippings(vault_root, now=fixed_now, dry_run=False)
+
+    text = (vault_root / "wiki-map.md").read_text(encoding="utf-8")
+    # The original hostile filename does NOT appear verbatim —
+    # backticks would have closed the inline-code span, breaking the row.
+    assert "evil`name" not in text
+    # The sanitized form (every hostile char collapsed to '-') IS present.
+    # Extract just the new row (between auto-start and auto-end) and assert
+    # the sanitized filename is what's in the backtick span there. We use
+    # exact match on the row so the comment-block backticks from the
+    # template (`re-running `bootstrap --force...``) don't trip the check.
+    row = "- [[wiki/topic/README|topic]] — processed `evil-name-----1-.md`"
+    assert row in text, f"sanitized row not found in:\n{text}"
+
+
+def test_add_wiki_promote_leaves_no_temp_file_leftovers(
+    vault_root: Path, fixed_now
+) -> None:
+    """MAJOR 3: `add_wiki.promote` must route every write through the
+    shared `atomic_write_text` helper. After a successful promote,
+    no `.<filename>.*.tmp` temp-file leftovers may remain in the
+    vault root — proves the helper's temp-file + `os.replace`
+    contract holds for the add_wiki code path (add_wiki.py:61,72,79
+    in the prior version, which all used bare `path.write_text`).
+    """
+    from _lib import ResearchInput, promote, write_staged_file
+
+    write_staged_file(
+        vault_root,
+        ResearchInput(topic="atomic-write", sources=["sources/source-a.md"]),
+        now=fixed_now,
+    )
+    promote(vault_root, "atomic-write", now=fixed_now)
+
+    leftover_tmp = [p for p in vault_root.rglob(".*.tmp")]
+    assert leftover_tmp == [], f"temp file(s) left behind: {leftover_tmp}"
+    # The promoted topic note + archived staged file both exist.
+    assert (vault_root / "topics" / "atomic-write.md").exists()
+    assert (vault_root / "_research" / "atomic-write.md").exists()
+
+
+def test_resolve_clipping_page_uses_safe_filename() -> None:
+    """MINOR 4 (helper-level): `resolve_clipping_page` must route the
+    filename through the shared `safe_filename` helper so the wiki
+    page path can never contain markdown-hostile chars.
+    """
+    p = resolve_clipping_page(Path("/vault"), "ai-security", "evil`name*.md")
+    assert "`" not in p.name
+    assert "*" not in p.name

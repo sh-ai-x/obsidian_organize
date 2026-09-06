@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .frontmatter import parse_frontmatter, serialize_frontmatter, FrontmatterDict
+from .io import atomic_write_text
 from .paths import (
     resolve_archive_path,
     resolve_staged_path,
@@ -77,14 +78,14 @@ def retire(
         staged_fm["status"] = "archived"
         staged_fm["updated"] = when.isoformat(timespec="seconds")
         if keep_staged:
-            staged.write_text(
-                serialize_frontmatter(staged_fm, staged_body), encoding="utf-8"
+            atomic_write_text(
+                staged, serialize_frontmatter(staged_fm, staged_body)
             )
             archived_from = staged
             archived_to = staged
         else:
-            archive.write_text(
-                serialize_frontmatter(staged_fm, staged_body), encoding="utf-8"
+            atomic_write_text(
+                archive, serialize_frontmatter(staged_fm, staged_body)
             )
             staged.unlink()
             archived_from = staged
@@ -103,7 +104,7 @@ def retire(
             if not (marker in line and line.lstrip().startswith("<!--"))
         ]
         if len(new_lines) != len(lines):
-            src.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+            atomic_write_text(src, "\n".join(new_lines) + "\n")
 
     # 4. Honor the keep_staged semantics by leaving the topic-note metadata
     #    in place if the user asked to keep staged in-place. We always delete

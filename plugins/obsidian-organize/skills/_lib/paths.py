@@ -22,6 +22,29 @@ def resolve_archive_path(vault_root: Path, topic: str, now: datetime | None = No
     return vault_root / "_archive" / "research" / f"{topic}-{when}.md"
 
 
+def safe_filename(name: str) -> str:
+    """Strip filesystem-hostile + markdown-hostile characters from a filename.
+
+    Filesystem-hostile (cannot appear in a single path segment on any of
+    the platforms we target, plus whitespace which silently breaks shell
+    tooling): ``/ \\ : * ? " < > |`` and ``\\n \\r \\t``.
+
+    Markdown-hostile (would break the `[[wikilink]]` / `# heading` /
+    backtick inline-code interpolation in `wiki-map.md` and topic
+    README pages, or smuggle HTML / wikilink payloads into rendered
+    Obsidian output): backtick `` ` ``, ``*``, ``~``, ``_``, ``[``, ``]``,
+    ``|``, ``#``. The pipe ``|`` and ``[`` / ``]`` are already in the
+    filesystem set; listing them twice is harmless.
+
+    All bad chars collapse to ``-`` so the file extension (``stem.md``)
+    is preserved. An empty result falls back to ``untitled.md`` so the
+    caller never has to handle a path with no name component.
+    """
+    bad = set('/\\:*?"<>|\n\r\t`*_~[]#')
+    out = "".join("-" if c in bad else c for c in name).strip()
+    return out or "untitled.md"
+
+
 @dataclass(frozen=True)
 class BacklinkHit:
     file: Path

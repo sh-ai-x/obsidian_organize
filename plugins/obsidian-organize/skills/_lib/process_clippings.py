@@ -24,6 +24,17 @@ For each `.md` file directly under `<vault>/Clippings/` (excluding
 
 The skill is intentionally side-effect-free until step 2 — step 1 only
 reads. `--dry-run` short-circuits step 2 onwards.
+
+Logging
+-------
+Diagnostic events (created topic README, wrote clipping page, archived
+clipping, skipped / failed counts) are emitted via the standard
+`logging` module under this module's logger. The library does NOT call
+`logging.basicConfig` at import time — that would mask any caller-side
+configuration. CLI entrypoints, tests, and any other embedder should
+configure logging (e.g. `logging.basicConfig(level=logging.INFO)`) at
+their own entry point so the audit lines are reachable. Tests can also
+use pytest's `caplog` fixture to assert against these events.
 """
 
 from __future__ import annotations
@@ -36,6 +47,8 @@ from pathlib import Path
 
 from .bootstrap import append_wiki_map_row
 from .frontmatter import serialize_frontmatter
+from .io import atomic_write_text
+from .paths import safe_filename as _safe_filename
 from .slug import normalize_topic_slug
 
 logger = logging.getLogger(__name__)
@@ -171,13 +184,6 @@ def unique_processed_path(processed_dir: Path, source_filename: str) -> Path:
     return candidate
 
 
-def _safe_filename(name: str) -> str:
-    """Strip filesystem-hostile characters from a filename."""
-    bad = set('/\\:*?"<>|\n\r\t')
-    out = "".join("-" if c in bad else c for c in name).strip()
-    return out or "untitled.md"
-
-
 def _sanitize_last_resort_slug(s: str) -> str:
     """Make a last-resort (non-ASCII-preserving) slug safe as a path segment.
 
@@ -310,9 +316,9 @@ def process_clippings(
                 if topic not in topics_seen:
                     readme = topic_dir / "README.md"
                     if not readme.exists():
-                        readme.write_text(
+                        atomic_write_text(
+                            readme,
                             render_topic_readme(topic=topic, created_iso=when_iso),
-                            encoding="utf-8",
                         )
                         logger.info("created topic README: %s", readme)
                     topics_seen.add(topic)
@@ -331,8 +337,9 @@ def process_clippings(
         if dry_run:
             # Mirror the real run's collision logic so callers see the
             # same `moved_to` the real run would have used (dry-run is
-            # only useful when its plan matches reality).
-            processed_dir.mkdir(parents=True, exist_ok=True)
+            # only useful when its plan matches reality). We must NOT
+            # create `Clippings/processed/` on a dry run — SKILL.md
+            # advertises dry-run as side-effect-free.
             moved = unique_processed_path(processed_dir, src.name)
             processed.append(
                 ClippingPage(
@@ -346,7 +353,7 @@ def process_clippings(
             continue
 
         try:
-            clipping_page_path.write_text(page_text, encoding="utf-8")
+            atomic_write_text(clipping_page_path, page_text)
             logger.info("wrote clipping page: %s", clipping_page_path)
         except OSError as e:
             raise RuntimeError(

@@ -7,11 +7,13 @@ helper that tests + the SKILL.md both delegate to.
 from __future__ import annotations
 
 import logging
-import os
-import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+from .io import atomic_write_text
+from .paths import safe_filename
+from .slug import normalize_topic_slug
 
 logger = logging.getLogger(__name__)
 
@@ -95,19 +97,19 @@ def bootstrap(
     if wiki_map.exists() and not force:
         result.skipped_existing.append(wiki_map)
     else:
-        wiki_map.write_text(
+        atomic_write_text(
+            wiki_map,
             WIKI_MAP_TEMPLATE.format(
                 created=when,
                 WIKI_MAP_AUTO_START=WIKI_MAP_AUTO_START,
                 WIKI_MAP_AUTO_END=WIKI_MAP_AUTO_END,
             ),
-            encoding="utf-8",
         )
         result.wiki_map_written = True
 
     if topics:
         for raw_topic in topics:
-            topic_slug = _slugify(raw_topic)
+            topic_slug = normalize_topic_slug(raw_topic)
             if not topic_slug:
                 continue
             topic_dir = vault_root / "wiki" / topic_slug
@@ -117,26 +119,15 @@ def bootstrap(
             if readme.exists() and not force:
                 result.skipped_existing.append(readme)
                 continue
-            readme.write_text(
+            atomic_write_text(
+                readme,
                 TOPIC_README_TEMPLATE.format(
                     topic=topic_slug, created=when
                 ),
-                encoding="utf-8",
             )
             result.seeded_topics.append(topic_slug)
 
     return result
-
-
-def _slugify(name: str) -> str:
-    """Mirror slug.normalize_topic_slug without an import cycle."""
-    import re
-
-    s = name.strip().lower()
-    s = re.sub(r"[\s_]+", "-", s)
-    s = re.sub(r"[^a-z0-9-]", "", s)
-    s = re.sub(r"-+", "-", s).strip("-")
-    return s
 
 
 # --------------------------------------------------------------------------- #
@@ -181,7 +172,7 @@ def append_wiki_map_row(
             WIKI_MAP_AUTO_END=WIKI_MAP_AUTO_END,
         )
 
-    row = f"- [[wiki/{topic}/README|{topic}]] — processed `{source_filename}`"
+    row = f"- [[wiki/{topic}/README|{topic}]] — processed `{safe_filename(source_filename)}`"
 
     # Idempotency: if the exact row already exists, do nothing. Catches
     # the failure mode where the wiki-map append succeeded but the
@@ -196,38 +187,5 @@ def append_wiki_map_row(
     else:
         text += f"\n{row}\n"
 
-    _atomic_write_text(map_path, text)
+    atomic_write_text(map_path, text)
     return True
-
-
-def _atomic_write_text(path: Path, text: str) -> None:
-    """Write `text` to `path` atomically via temp-file + `os.replace`.
-
-    `os.fdopen` can raise (e.g. invalid encoding on this platform);
-    if it raises, the raw file descriptor returned by `mkstemp` would
-    leak. Wrap the `os.fdopen` call so we always close the raw fd on
-    the error path before re-raising.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
-    )
-    try:
-        try:
-            f = os.fdopen(fd, "w", encoding="utf-8")
-        except BaseException:
-            # os.fdopen failed before taking ownership of `fd`; close
-            # the raw fd ourselves so it doesn't leak.
-            os.close(fd)
-            raise
-        with f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_name, path)
-    except BaseException:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise

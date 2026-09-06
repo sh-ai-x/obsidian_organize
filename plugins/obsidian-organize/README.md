@@ -39,7 +39,7 @@ Once installed, the five skills are available as namespace-prefixed slash comman
 
 ```
 /obsidian-organize:bootstrap       <vault-path>                  [--force] [--topics "a,b,c"]
-/obsidian-organize:process_clippings [<vault-path>]              [--dry-run] [--include-processed] [--topic-override <slug>] [--no-wiki-map]
+/obsidian-organize:process_clippings [<vault-path>]              [--dry-run]
 /obsidian-organize:research        <topic>                       [--source URL] [--from <path>] [--append]
 /obsidian-organize:add_wiki        <topic-or-file>               [--force] [--no-backlinks]
 /obsidian-organize:remove_wiki     <topic>                       [--dry-run] [--keep-staged]
