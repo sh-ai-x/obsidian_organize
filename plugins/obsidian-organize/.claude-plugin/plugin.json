@@ -1,37 +1,22 @@
 {
   "name": "obsidian-organize",
   "version": "0.2.0",
-  "description": "Topic-organizer for Obsidian vaults. Exposes four skills — bootstrap (vault layout), research (gather source material), add_wiki (promote to topic note), remove_wiki (retire topic + archive). Layout mirrors hermes-wiki-super's Clippings-processed / wiki / wiki-map structure.",
-  "skills": [
-    {
-      "id": "obsidian-organize:bootstrap",
-      "path": "skills/bootstrap/SKILL.md"
-    },
-    {
-      "id": "obsidian-organize:research",
-      "path": "skills/research/SKILL.md"
-    },
-    {
-      "id": "obsidian-organize:add_wiki",
-      "path": "skills/add_wiki/SKILL.md"
-    },
-    {
-      "id": "obsidian-organize:remove_wiki",
-      "path": "skills/remove_wiki/SKILL.md"
-    }
-  ],
-  "authors": [
-    {
-      "name": "sh-ai-x"
-    }
-  ],
+  "description": "Topic-organizer for Obsidian vaults. Four skills — bootstrap (vault layout matching hermes-wiki-super's Clippings-processed / wiki / wiki-map), research (gather source material), add_wiki (promote to topic note), remove_wiki (retire topic + archive). Additive over hermes-wiki-super's add-wiki / process-clippings.",
+  "author": {
+    "name": "sh-ai-x"
+  },
   "license": "MIT",
-  "references": {
-    "vault_convention": "hermes-wiki-super",
-    "vault_layout": "Clippings/processed, wiki/<topic>/README.md, wiki-map.md, _research/, _archive/research/, topics/",
-    "frontmatter_inherits_from": [
-      "hermes-wiki-super/add-wiki",
-      "hermes-wiki-super/process-clippings"
-    ]
-  }
+  "keywords": [
+    "obsidian",
+    "knowledge-management",
+    "topic-organizer",
+    "wiki",
+    "hermes-wiki-super"
+  ],
+  "skills": [
+    "./skills/bootstrap",
+    "./skills/research",
+    "./skills/add_wiki",
+    "./skills/remove_wiki"
+  ]
 }
