@@ -326,6 +326,13 @@ def process_clippings(
                         logger.info("created topic README: %s", readme)
                     topics_seen.add(topic)
             except OSError as e:
+                logger.error(
+                    "process_clippings: failed to prepare wiki/%s/ for clipping %r at %s",
+                    topic,
+                    src.name,
+                    topic_dir,
+                    exc_info=True,
+                )
                 raise RuntimeError(
                     f"failed to prepare wiki/{topic}/ for clipping {src.name!r}: {e}"
                 ) from e
@@ -359,6 +366,12 @@ def process_clippings(
             atomic_write_text(clipping_page_path, page_text)
             logger.info("wrote clipping page: %s", clipping_page_path)
         except OSError as e:
+            logger.error(
+                "process_clippings: failed to write clipping page for %r at %s",
+                src.name,
+                clipping_page_path,
+                exc_info=True,
+            )
             raise RuntimeError(
                 f"failed to write clipping page for {src.name!r} at "
                 f"{clipping_page_path}: {e}"
@@ -373,6 +386,14 @@ def process_clippings(
         try:
             append_wiki_map_row(vault_root, topic, src.name, now=when)
         except OSError as e:
+            logger.error(
+                "process_clippings: failed to update wiki-map.md for topic %r "
+                "(clipping %r left unprocessed for retry) at %s",
+                topic,
+                src.name,
+                vault_root / "wiki-map.md",
+                exc_info=True,
+            )
             raise RuntimeError(
                 f"failed to update wiki-map.md for topic {topic!r} "
                 f"(clipping {src.name!r} left unprocessed for retry): {e}"
@@ -384,6 +405,12 @@ def process_clippings(
             src.rename(moved)
             logger.info("archived clipping: %s -> %s", src, moved)
         except OSError as e:
+            logger.error(
+                "process_clippings: failed to archive clipping %r to %s",
+                src.name,
+                processed_dir,
+                exc_info=True,
+            )
             raise RuntimeError(
                 f"failed to archive {src.name!r} to {processed_dir}: {e}"
             ) from e

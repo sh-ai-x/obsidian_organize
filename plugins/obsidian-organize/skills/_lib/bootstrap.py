@@ -7,6 +7,7 @@ helper that tests + the SKILL.md both delegate to.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,16 @@ from pathlib import Path
 from .io import atomic_write_text
 from .paths import safe_filename
 from .slug import normalize_topic_slug
+
+# fcntl is POSIX-only. Guard the import so a Windows / non-POSIX
+# platform degrades gracefully (still appends, but without the
+# cross-process lock) rather than failing at import time.
+try:
+    import fcntl  # type: ignore[import-not-found]
+    _HAS_FCNTL = True
+except ImportError:  # pragma: no cover - non-POSIX platforms
+    fcntl = None  # type: ignore[assignment]
+    _HAS_FCNTL = False
 
 logger = logging.getLogger(__name__)
 
@@ -158,34 +169,72 @@ def append_wiki_map_row(
 
     The write is atomic (temp file + `os.replace`) so a crash or SIGKILL
     mid-write can never leave `wiki-map.md` truncated or corrupted.
+
+    A `fcntl.flock(LOCK_EX)` lock guards the entire read-modify-write
+    so concurrent invocations do not both read the same snapshot and
+    clobber each other (lost-update / TOCTOU). The lock is held on a
+    sibling file `wiki-map.md.lock` — locking `wiki-map.md` itself
+    would be unsafe because `atomic_write_text` swaps the inode out
+    from under the lock via `os.replace`. The lock file is opened
+    O_CREAT so the first writer creates it; subsequent writers just
+    take the lock.
     """
     map_path = vault_root / "wiki-map.md"
+    lock_path = map_path.with_name(map_path.name + ".lock")
     when = now or datetime.now(timezone.utc)
     when_iso = when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    if map_path.exists():
-        text = map_path.read_text(encoding="utf-8")
-    else:
-        text = WIKI_MAP_TEMPLATE.format(
-            created=when_iso,
-            WIKI_MAP_AUTO_START=WIKI_MAP_AUTO_START,
-            WIKI_MAP_AUTO_END=WIKI_MAP_AUTO_END,
+    def _do_append() -> bool:
+        if map_path.exists():
+            text = map_path.read_text(encoding="utf-8")
+        else:
+            text = WIKI_MAP_TEMPLATE.format(
+                created=when_iso,
+                WIKI_MAP_AUTO_START=WIKI_MAP_AUTO_START,
+                WIKI_MAP_AUTO_END=WIKI_MAP_AUTO_END,
+            )
+
+        row = f"- [[wiki/{topic}/README|{topic}]] — processed `{safe_filename(source_filename)}`"
+
+        # Idempotency: if the exact row already exists, do nothing. Catches
+        # the failure mode where the wiki-map append succeeded but the
+        # subsequent `src.rename` failed — re-running would otherwise
+        # duplicate the row.
+        if row in text:
+            logger.info("wiki-map row already present, skipping append: %s", row)
+            return False
+
+        if WIKI_MAP_AUTO_END in text:
+            text = text.replace(WIKI_MAP_AUTO_END, f"{row}\n{WIKI_MAP_AUTO_END}")
+        else:
+            text += f"\n{row}\n"
+
+        atomic_write_text(map_path, text)
+        return True
+
+    if not _HAS_FCNTL:
+        # Non-POSIX platform (e.g. Windows). fcntl is not available;
+        # degrade gracefully — still append, but without the
+        # cross-process lock. The atomic-write + idempotency check
+        # already prevent partial / duplicate writes from a single
+        # process; the only thing lost is the cross-process lost-update
+        # guarantee, which the import-guard is logging for visibility.
+        logger.warning(
+            "fcntl not available on this platform; wiki-map appends are not "
+            "cross-process locked (path=%s)",
+            map_path,
         )
+        return _do_append()
 
-    row = f"- [[wiki/{topic}/README|{topic}]] — processed `{safe_filename(source_filename)}`"
-
-    # Idempotency: if the exact row already exists, do nothing. Catches
-    # the failure mode where the wiki-map append succeeded but the
-    # subsequent `src.rename` failed — re-running would otherwise
-    # duplicate the row.
-    if row in text:
-        logger.info("wiki-map row already present, skipping append: %s", row)
-        return False
-
-    if WIKI_MAP_AUTO_END in text:
-        text = text.replace(WIKI_MAP_AUTO_END, f"{row}\n{WIKI_MAP_AUTO_END}")
-    else:
-        text += f"\n{row}\n"
-
-    atomic_write_text(map_path, text)
-    return True
+    # POSIX: hold an exclusive flock across the whole read-modify-write.
+    # Open the lock file with O_CREAT|O_RDWR so the first writer creates
+    # it; subsequent writers open the existing inode and take the lock.
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            return _do_append()
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)

@@ -38,15 +38,18 @@ filters, the NEWEST one wins. The payload arrives oldest-first, so
 `main` sorts explicitly rather than trusting input order -- see the
 comment on the sort in `main` for the false-Approve this prevents.
 
-Author matching accepts ANY of `author.login` (modern `gh pr view
---json comments` schema), the legacy `user.login` (older `gh api
-.../issues/.../comments` payloads), or a top-level `login` string on
-the comment (some endpoints flatten it). The matching is
-case-insensitive and uses startswith('claude') to catch both
-`claude[bot]` and any future `claude-something` agent labels. Issue
-#625 surfaced this need because the MINIMAX wrapper posts the verdict
-comment and the fallback parser must work regardless of which gh CLI
-version is installed on the runner.
+Author matching is STRICT. The previous startswith('claude') check
+was a CRITICAL vulnerability (F1 from the #625 security review): any
+GitHub account whose login merely starts with "claude" — e.g.
+"claude-evil", "claudefan", "Claude-Attacker" — was treated as the
+legitimate Claude bot, so a `Verdict: Approve` PR comment from any
+such account flipped the severity gate green and overrode the real
+agent verdict. The check below pins identity to GitHub's bot
+authentication contract: a comment counts as the trusted agent only
+if `user.type == "Bot"` AND (`user.login` is in TRUSTED_AUTHOR_LOGINS
+OR `performed_via_github_app.slug` is in TRUSTED_APP_SLUGS). Those
+two allowlists are the trust anchor for this helper; do not widen
+them without a security review.
 
 Usage:
     cat comments.json | VERDICT_COMMENT_CUTOFF=2024-01-01T00:00:00Z \\
@@ -77,6 +80,16 @@ VERDICT_RE_LENIENT = re.compile(
 )
 CUTOFF_ENV = "VERDICT_COMMENT_CUTOFF"
 
+# --- Trust anchor for verdict-author spoofing prevention (F1, #625 security review) ---
+# GitHub's bot-authentication contract for comments written via a registered
+# GitHub App: `user.type == "Bot"`, `user.login == "<app-slug>[bot]"`, and
+# `performed_via_github_app.slug == "<app-slug>"`. Pinning identity to these
+# exact values rejects any human-controlled account whose login merely
+# resembles "claude" (e.g. "claude-evil", "claudefan"). Do not widen either
+# allowlist without a security review.
+TRUSTED_AUTHOR_LOGINS = frozenset({"claude[bot]"})
+TRUSTED_APP_SLUGS = frozenset({"claude"})
+
 
 def _parse_iso(s: str) -> datetime | None:
     """Parse an ISO 8601 string, accepting the 'Z' suffix.
@@ -97,15 +110,31 @@ def _parse_iso(s: str) -> datetime | None:
         return None
 
 
+def _comment_created_at(comment: dict) -> str:
+    """Return the comment's creation timestamp string.
+
+    The /repos/{owner}/{repo}/issues/{n}/comments endpoint returns
+    `created_at` (snake_case); the legacy `gh pr view --json comments`
+    returns `createdAt` (camelCase). Accept either so the helper stays
+    robust against either payload source.
+    """
+    if not isinstance(comment, dict):
+        return ""
+    raw = comment.get("created_at")
+    if not isinstance(raw, str):
+        raw = comment.get("createdAt", "")
+    return raw if isinstance(raw, str) else ""
+
+
 def _after_cutoff(comment: dict, cutoff: datetime | None) -> bool:
-    """True iff comment's createdAt is strictly newer than cutoff.
+    """True iff comment's creation timestamp is strictly newer than cutoff.
 
     cutoff=None (no env var set) accepts all comments -- the caller
     is responsible for setting the cutoff when staleness is a concern.
     """
     if cutoff is None:
         return True
-    ts = _parse_iso(comment.get("createdAt", ""))
+    ts = _parse_iso(_comment_created_at(comment))
     if ts is None:
         return False
     if ts.tzinfo is None:
@@ -114,42 +143,37 @@ def _after_cutoff(comment: dict, cutoff: datetime | None) -> bool:
 
 
 def _is_claude_author(comment: dict) -> bool:
-    """True iff author login starts with 'claude' (case-insensitive).
+    """True iff the comment is verified to be from the trusted Claude bot.
 
-    gh CLI's JSON shape for comment authors has shifted across major
-    versions:
+    Requires BOTH conditions (strict identity pinning, F1 from #625
+    security review -- the previous startswith('claude') check accepted
+    any human-controlled account whose login resembled "claude"):
 
-      - `gh pr view --json comments` (modern, ~2.x) emits an ``author``
-        object with a ``login`` sub-field.
-      - Older `gh api .../issues/.../comments` payloads use a flat
-        ``user`` object with a ``login`` sub-field (the legacy shape).
-      - Some endpoints / future versions flatten it further to a
-        top-level ``login`` string on the comment itself.
+      1. ``user.type == "Bot"`` (case-insensitive), AND
+      2. (``user.login`` in TRUSTED_AUTHOR_LOGINS
+          OR ``performed_via_github_app.slug`` in TRUSTED_APP_SLUGS)
 
-    Accept any of the three locations so the caller stays robust across
-    CLI versions. When no login field is present (e.g. deleted account,
-    scoped token) we treat the comment as non-claude and skip it.
+    Isinstance guards are kept on every attribute access so a malformed
+    comment object (missing user, wrong shape, etc.) degrades to
+    "not trusted, skip" instead of crashing the gate -- preserves the
+    prior behaviour for odd payloads.
     """
-    # Issue #625 review (P1): the widened author lookup adds unguarded
-    # attribute access. `comment.get("author") or {}` returns {} only
-    # when the key is missing — `{"author": None}` / `{"author": "..."}`
-    # / `{"author": 42}` would all fail `.get("login")` with
-    # AttributeError, aborting the whole comment scan. Same for the
-    # top-level `comment["login"]` (could be int or nested object) and
-    # `login.lower()` (would raise if login is non-string). Wrap each
-    # source in an isinstance guard so a single odd comment object
-    # degrades to "non-claude, skip" instead of crashing the gate.
-    for source in (
-        comment.get("author"),
-        comment.get("user"),
-        comment.get("login"),
-    ):
-        if isinstance(source, dict):
-            login = source.get("login")
-            if isinstance(login, str):
-                return login.lower().startswith("claude")
-        elif isinstance(source, str):
-            return source.lower().startswith("claude")
+    if not isinstance(comment, dict):
+        return False
+    user = comment.get("user")
+    if not isinstance(user, dict):
+        return False
+    user_type = user.get("type")
+    if not isinstance(user_type, str) or user_type.lower() != "bot":
+        return False
+    login = user.get("login")
+    if isinstance(login, str) and login in TRUSTED_AUTHOR_LOGINS:
+        return True
+    app = comment.get("performed_via_github_app")
+    if isinstance(app, dict):
+        slug = app.get("slug")
+        if isinstance(slug, str) and slug in TRUSTED_APP_SLUGS:
+            return True
     return False
 
 
@@ -198,7 +222,7 @@ def main() -> int:
     # `datetime.min` floor only decides their relative order in the
     # no-cutoff case, where oldest-last is still the safer default).
     def _sort_key(c: object) -> datetime:
-        ts = _parse_iso(c.get("createdAt", "")) if isinstance(c, dict) else None
+        ts = _parse_iso(_comment_created_at(c)) if isinstance(c, dict) else None
         if ts is None:
             return datetime.min.replace(tzinfo=timezone.utc)
         if ts.tzinfo is None:

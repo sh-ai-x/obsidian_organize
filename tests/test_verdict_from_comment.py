@@ -13,6 +13,19 @@ returned the oldest post-cutoff verdict. Observed on PR #5 / run
 34045860905: a terse `Verdict: Approve` comment at 17:27:18 beat the
 real `Verdict: Changes Requested` summary at 17:28:22, and the
 severity gate reported pass for a Changes-Requested review.
+
+Second security regression (F1, #625 security review): author
+matching used `startswith('claude')`, so any GitHub account whose
+login merely started with "claude" (`claude-evil`, `claudefan`,
+`Claude-Attacker`) was treated as the official Claude bot. A
+spoofing account could post `Verdict: Approve` and flip the severity
+gate green, overriding the real agent verdict. The regression tests
+in this file pin identity to GitHub's bot-authentication contract:
+`user.type == "Bot"` AND (`user.login` in TRUSTED_AUTHOR_LOGINS
+OR `performed_via_github_app.slug` in TRUSTED_APP_SLUGS). The shell
+script fetches from the REST endpoint so those raw fields reach the
+helper (the legacy `gh pr view --json comments` source strips the
+`[bot]` suffix and drops `performed_via_github_app`).
 """
 
 from __future__ import annotations
@@ -48,8 +61,17 @@ def run_helper(comments: list[dict], cutoff: str | None = None) -> str:
     return proc.stdout.strip()
 
 
+# Payload shape mirrors `gh api /repos/{owner}/{repo}/issues/{n}/comments`:
+#   {user: {login: "claude[bot]", type: "Bot"}, performed_via_github_app:
+#   {slug: "claude"}, body, created_at (snake_case)}.
 def claude(body: str, created_at: str) -> dict:
-    return {"body": body, "createdAt": created_at, "author": {"login": "claude"}}
+    """A comment from the genuine Claude GitHub App -- trusted."""
+    return {
+        "body": body,
+        "created_at": created_at,
+        "user": {"login": "claude[bot]", "type": "Bot"},
+        "performed_via_github_app": {"slug": "claude"},
+    }
 
 
 def test_helper_exists() -> None:
@@ -59,7 +81,8 @@ def test_helper_exists() -> None:
 def test_newest_verdict_wins_on_oldest_first_payload() -> None:
     """The exact PR #5 false-Approve timeline must resolve to the real verdict.
 
-    Payload order is oldest-first, matching `gh pr view --json comments`.
+    Payload order is oldest-first, matching the order the REST endpoint
+    returns per page. The newest-first sort in the helper still has to win.
     """
     comments = [
         claude("Verdict: Approve", "2026-09-06T17:27:18Z"),
@@ -99,11 +122,12 @@ def test_cutoff_still_excludes_stale_verdicts() -> None:
 
 
 def test_non_claude_authors_are_ignored() -> None:
+    """A plain human account is not a trusted author."""
     comments = [
         {
             "body": "Verdict: Approve",
-            "createdAt": "2026-09-06T17:28:22Z",
-            "author": {"login": "github-actions"},
+            "created_at": "2026-09-06T17:28:22Z",
+            "user": {"login": "github-actions", "type": "User"},
         }
     ]
     assert run_helper(comments, "2026-09-06T17:20:45Z") == ""
@@ -115,9 +139,14 @@ def test_bold_markdown_verdict_is_recognized() -> None:
 
 
 def test_undatable_comment_does_not_crash_the_scan() -> None:
-    """A comment with no parseable createdAt must not abort the gate."""
+    """A comment with no parseable timestamp must not abort the gate."""
     comments = [
-        {"body": "Verdict: Approve", "createdAt": "not-a-date", "author": {"login": "claude"}},
+        {
+            "body": "Verdict: Approve",
+            "created_at": "not-a-date",
+            "user": {"login": "claude[bot]", "type": "Bot"},
+            "performed_via_github_app": {"slug": "claude"},
+        },
         claude("Verdict: Changes Requested", "2026-09-06T17:28:22Z"),
     ]
     assert run_helper(comments, "2026-09-06T17:20:45Z") == "Changes Requested"
@@ -127,6 +156,103 @@ def test_no_verdict_anywhere_returns_empty() -> None:
     """Empty output is what makes the gate hard-fail; it must be preserved."""
     comments = [claude("just a comment, no verdict line", "2026-09-06T17:28:22Z")]
     assert run_helper(comments, "2026-09-06T17:20:45Z") == ""
+
+
+# ------------------------------------------------------------------
+# Spoofing regression tests (F1, #625 security review).
+#
+# The previous `_is_claude_author` used `login.lower().startswith("claude")`,
+# so any GitHub account named "claude-evil", "claudefan",
+# "Claude-Attacker", or even a User account literally named "claude[bot]"
+# was accepted as the legitimate Claude bot. A `Verdict: Approve` from
+# any such account would flip the severity gate green.
+#
+# The strict check requires `user.type == "Bot"` AND
+# (`user.login` in {"claude[bot]"} OR
+#  `performed_via_github_app.slug` in {"claude"}).
+# ------------------------------------------------------------------
+
+
+def _spoof_comment(login: str, body: str = "Verdict: Approve") -> dict:
+    """Build a comment shaped like a spoofing attempt: human User account."""
+    return {
+        "body": body,
+        "created_at": "2026-09-06T17:28:22Z",
+        "user": {"login": login, "type": "User"},
+    }
+
+
+@pytest.mark.parametrize("login", ["claude-evil", "claudefan", "Claude-Attacker"])
+def test_spoof_logins_with_user_type_are_ignored(login: str) -> None:
+    """Human-controlled accounts whose login merely resembles "claude"
+    must NOT be treated as the legitimate Claude bot. The pre-fix
+    startswith('claude') check would have accepted all of these and
+    flipped the gate green on a `Verdict: Approve`."""
+    comments = [_spoof_comment(login)]
+    assert run_helper(comments, "2026-09-06T17:20:45Z") == ""
+
+
+def test_user_account_with_claude_bot_login_is_ignored() -> None:
+    """A human User account whose login is literally `claude[bot]`
+    must be ignored -- type must be Bot, not User. Pre-fix this would
+    have been accepted (login starts with 'claude') and could spoof
+    verdicts."""
+    comments = [_spoof_comment("claude[bot]")]
+    assert run_helper(comments, "2026-09-06T17:20:45Z") == ""
+
+
+def test_genuine_bot_comment_is_accepted() -> None:
+    """The minimum-shape legitimate Claude bot comment must be accepted."""
+    comments = [
+        {
+            "body": "Verdict: Approve",
+            "created_at": "2026-09-06T17:28:22Z",
+            "user": {"login": "claude[bot]", "type": "Bot"},
+        }
+    ]
+    assert run_helper(comments, "2026-09-06T17:20:45Z") == "Approve"
+
+
+def test_app_slug_trusted_with_bot_type_is_accepted() -> None:
+    """Comments written via the registered `claude` GitHub App must be
+    accepted even when `user.login` is the raw app name without the
+    `[bot]` suffix -- the slug allowlist pins identity to the app
+    registration, which GitHub cannot impersonate."""
+    comments = [
+        {
+            "body": "Verdict: Approve",
+            "created_at": "2026-09-06T17:28:22Z",
+            "user": {"login": "some-app-bot-name", "type": "Bot"},
+            "performed_via_github_app": {"slug": "claude"},
+        }
+    ]
+    assert run_helper(comments, "2026-09-06T17:20:45Z") == "Approve"
+
+
+def test_app_slug_without_bot_type_is_ignored() -> None:
+    """Defensive: `performed_via_github_app.slug` alone is not enough
+    -- a spoofing attempt that fabricates the slug field but has
+    `user.type == "User"` must still be rejected."""
+    comments = [
+        {
+            "body": "Verdict: Approve",
+            "created_at": "2026-09-06T17:28:22Z",
+            "user": {"login": "attacker", "type": "User"},
+            "performed_via_github_app": {"slug": "claude"},
+        }
+    ]
+    assert run_helper(comments, "2026-09-06T17:20:45Z") == ""
+
+
+def test_spoofing_does_not_shadow_real_verdict() -> None:
+    """A spoofed `Verdict: Approve` must not override a real
+    `Verdict: Changes Requested` from the genuine bot. Pre-fix the
+    gate would have reported green for a Changes-Requested review."""
+    comments = [
+        _spoof_comment("claude-evil"),
+        claude("Verdict: Changes Requested", "2026-09-06T17:28:22Z"),
+    ]
+    assert run_helper(comments, "2026-09-06T17:20:45Z") == "Changes Requested"
 
 
 @pytest.mark.parametrize("payload", ["[]", ""])

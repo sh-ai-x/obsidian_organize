@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 BACKLINK_MARKER_TEMPLATE = "<!-- back-linked from [[topics/{topic}]] on {timestamp} -->"
 
@@ -67,6 +70,13 @@ def scan_backlinks(vault_root: Path, topic: str) -> list[BacklinkHit]:
 
     Returns the lines (with file + 1-indexed line number) that contain the
     marker for `topic`. The caller decides whether to delete them.
+
+    A file whose contents cannot be decoded as UTF-8 is NOT silently
+    skipped: a `logger.warning` naming the file is emitted so callers
+    (and post-incident forensics) can see the failure. The scan still
+    completes for every other file — a single bad file must not block
+    `remove_wiki.retire` from cleaning up back-links in the rest of the
+    vault.
     """
     marker = f"[[topics/{topic}]]"
     hits: list[BacklinkHit] = []
@@ -76,7 +86,25 @@ def scan_backlinks(vault_root: Path, topic: str) -> list[BacklinkHit]:
             continue
         try:
             text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
+        except UnicodeDecodeError as e:
+            # Do NOT `continue` silently — that previously made the file
+            # invisible to `remove_wiki.retire`, which would delete the
+            # topic note while leaving back-link markers in this file
+            # forever, with no signal to anyone. Surface the failure.
+            logger.warning(
+                "scan_backlinks: skipping non-UTF-8 file %s: %s",
+                path,
+                e,
+            )
+            continue
+        except OSError as e:
+            # Permission denied / file vanished mid-scan / etc. — also
+            # surface, don't silently swallow.
+            logger.warning(
+                "scan_backlinks: failed to read %s: %s",
+                path,
+                e,
+            )
             continue
         for n, line in enumerate(text.splitlines(), start=1):
             if marker in line and line.lstrip().startswith("<!--"):

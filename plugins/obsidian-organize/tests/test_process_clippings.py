@@ -16,6 +16,7 @@ Run with: `pytest -q tests/test_process_clippings.py`
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -612,3 +613,96 @@ def test_resolve_clipping_page_uses_safe_filename() -> None:
     p = resolve_clipping_page(Path("/vault"), "ai-security", "evil`name*.md")
     assert "`" not in p.name
     assert "*" not in p.name
+
+
+# --------------------------------------------------------------------------- #
+# F6 — file-mutation audit gap (PR #5 review)
+# --------------------------------------------------------------------------- #
+
+
+def test_process_clippings_logs_error_on_wiki_map_write_failure(
+    vault_root: Path, fixed_now, monkeypatch, caplog
+) -> None:
+    """F6: a vault-mutating failure must surface via `logger.error`
+    (with traceback) BEFORE the `RuntimeError` is raised, so
+    post-incident forensics can reconstruct what happened.
+
+    Previously, `process_clippings` wrapped the underlying `OSError`
+    in a `RuntimeError` and re-raised with no logging at all — under
+    the library's documented default-WARNING contract, the failure
+    was invisible to anyone tailing logs at INFO.
+    """
+    import importlib
+
+    pc_module = importlib.import_module("_lib.process_clippings")
+
+    src = _write_clipping(vault_root, "x.md", "# Topic\n\n…\n")
+
+    def _boom(*args, **kwargs):
+        raise OSError("simulated disk-full mid wiki-map write")
+
+    monkeypatch.setattr(pc_module, "append_wiki_map_row", _boom)
+
+    with caplog.at_level(logging.ERROR, logger="_lib.process_clippings"):
+        with pytest.raises(RuntimeError, match="wiki-map"):
+            process_clippings(vault_root, now=fixed_now, dry_run=False)
+
+    # An ERROR record naming the path was emitted, with exc_info
+    # attached (so the traceback is reconstructable from logs).
+    error_records = [
+        r for r in caplog.records
+        if r.levelno == logging.ERROR and "wiki-map" in r.getMessage().lower()
+    ]
+    assert error_records, (
+        f"expected an error log mentioning wiki-map, got: "
+        f"{[(r.levelname, r.getMessage()) for r in caplog.records]}"
+    )
+    assert any(r.exc_info for r in error_records), (
+        "expected exc_info=True on at least one error record "
+        "(traceback attached)"
+    )
+
+
+def test_process_clippings_logs_error_on_clipping_page_write_failure(
+    vault_root: Path, fixed_now, monkeypatch, caplog
+) -> None:
+    """F6: the clipping-page write failure path must ALSO emit a
+    `logger.error` before raising `RuntimeError` — proving the fix is
+    applied uniformly to every `raise RuntimeError(...) from e` site
+    that wraps a filesystem error, not just the wiki-map one.
+    """
+    import importlib
+
+    pc_module = importlib.import_module("_lib.process_clippings")
+
+    _write_clipping(vault_root, "y.md", "# Topic\n\n…\n")
+
+    # First `atomic_write_text` call is the topic README — must
+    # succeed. Second is the clipping page — must fail. Counting
+    # calls lets us trigger the second site specifically.
+    real_write_text = pc_module.atomic_write_text
+    call_count = {"n": 0}
+
+    def _selective_boom(path, text):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return real_write_text(path, text)  # topic README succeeds
+        raise OSError("simulated disk-full mid clipping-page write")
+
+    monkeypatch.setattr(pc_module, "atomic_write_text", _selective_boom)
+
+    with caplog.at_level(logging.ERROR, logger="_lib.process_clippings"):
+        with pytest.raises(RuntimeError, match="clipping page"):
+            process_clippings(vault_root, now=fixed_now, dry_run=False)
+
+    error_records = [
+        r for r in caplog.records
+        if r.levelno == logging.ERROR and "clipping page" in r.getMessage().lower()
+    ]
+    assert error_records, (
+        f"expected an error log mentioning clipping page, got: "
+        f"{[(r.levelname, r.getMessage()) for r in caplog.records]}"
+    )
+    assert any(r.exc_info for r in error_records), (
+        "expected exc_info=True on at least one error record"
+    )

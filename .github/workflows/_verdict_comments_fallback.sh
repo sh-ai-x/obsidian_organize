@@ -2,8 +2,10 @@
 # _verdict_comments_fallback.sh — PR-comments retry-loop fallback (issue #625).
 #
 # Single source of truth for the retry-loop that recovers the agent's
-# verdict from a claude-prefixed PR comment when extract-verdict.py
-# returned PARSE_FAILED. Previously this loop was copy-pasted between
+# verdict from a PR comment authored by the verified Claude GitHub App
+# when extract-verdict.py returned PARSE_FAILED. ("claude-prefixed"
+# author matching was the F1 spoofing vulnerability -- see the endpoint
+# note below.) Previously this loop was copy-pasted between
 # the review and security jobs (review.yml lines 419-441 and 749-771);
 # the duplication was flagged by the #625 review (F1, retry-loop
 # SSOT violation). Both jobs now call this script with different
@@ -23,19 +25,31 @@
 #        single token. Mixing diagnostics into stdout would corrupt
 #        the verdict variable with the diagnostic blob.
 #
-# The jq selector is intentionally minimal — `[.comments[] | {body,
-# createdAt, author, user, login}]` — so the Python helper is the
-# single source of truth for author matching. Previously the same
-# `.author.login // .user.login // .login // ""` fallback was duplicated
-# in jq (here) and in `_is_claude_author` (Python); drift risk is now
-# eliminated because only the Python helper knows about author shape.
+# The jq selector is intentionally minimal — `[.[] | {body, created_at,
+# user, performed_via_github_app}]` — so the Python helper is the
+# single source of truth for author matching. The shell script only
+# shapes the payload; strict identity verification
+# (`user.type == "Bot"` AND allowlisted `user.login` /
+# `performed_via_github_app.slug`) lives in `_is_claude_author` so
+# author logic stays in one place.
+#
+# Endpoint note (F1, #625 security review): we fetch from
+# `gh api /repos/{owner}/{repo}/issues/{n}/comments` rather than
+# `gh pr view --json comments` because the latter strips the
+# `[bot]` suffix from `author.login` and drops the
+# `performed_via_github_app` field -- making the strict-bot-identity
+# check impossible. The REST endpoint exposes the raw GitHub payloads
+# with `user.type`, `user.login` (including the `[bot]` suffix), and
+# `performed_via_github_app.slug` intact. `--paginate` is required
+# because the endpoint caps each page at 100 comments and a PR can
+# have more than that across its lifetime.
 set -euo pipefail
 
 PR_NUMBER="${1:?usage: $0 <PR_NUMBER>}"
-# PR_NUMBER must be an integer — gh pr view rejects other strings and a
-# non-integer here would silently produce an empty comments payload
-# (and make the script's "no verdict recovered" path indistinguishable
-# from a transient gh failure). Validate before passing to gh.
+# PR_NUMBER must be an integer — the REST path interpolates it directly
+# and a non-integer would either 404 or silently produce an empty
+# comments payload (making the script's "no verdict recovered" path
+# indistinguishable from a transient gh failure). Validate before use.
 case "$PR_NUMBER" in
   ''|*[!0-9]*) echo "::error::${JOB_NAME:-review} PR_NUMBER must be an integer: got '$PR_NUMBER'" >&2; exit 64 ;;
 esac
@@ -62,22 +76,37 @@ HELPER="${WORKSPACE}/.github/workflows/_verdict_from_comment.py"
 
 comment_verdict=""
 # Per-attempt scratch file for gh stderr — captured from the SAME
-# `gh pr view` call that produces the comments payload, so the
+# `gh api` call that produces the comments payload, so the
 # diagnostics and the data are guaranteed to come from one fetch
 # (previously two separate calls could disagree if a transient error
 # happened between them, producing a ghost warning with no payload).
 gh_err_file="$(mktemp)"
 helper_err_file="$(mktemp)"
 trap 'rm -f "$gh_err_file" "$helper_err_file"' EXIT
+# Owner/repo is required by the REST endpoint path
+# `/repos/{owner}/{repo}/issues/{n}/comments`. Prefer the
+# GITHUB_REPOSITORY env var (set on every Actions run); fall back to
+# `gh repo view` for local invocations and tests. If both fail we
+# still proceed -- the gh call will error out per attempt and the
+# retry loop will exhaust, producing the same "no verdict recovered"
+# outcome as a transient failure.
+if [ -n "${GITHUB_REPOSITORY:-}" ]; then
+  owner_repo="$GITHUB_REPOSITORY"
+else
+  owner_repo=$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null || echo "")
+fi
+if [ -z "$owner_repo" ]; then
+  echo "::warning::${JOB_NAME} cannot derive owner/repo for gh api fallback (GITHUB_REPOSITORY unset and gh repo view failed)" >&2
+fi
 for attempt in $(seq 1 "$ATTEMPTS"); do
   echo "::notice::${JOB_NAME} PR-comments fallback attempt=${attempt}/${ATTEMPTS}" >&2
   : >"$gh_err_file"
-  comments_json=$(gh pr view "$PR_NUMBER" --json comments \
-    --jq '[.comments[] | {body, createdAt, author, user, login}]' \
+  comments_json=$(gh api --paginate "/repos/${owner_repo}/issues/${PR_NUMBER}/comments" \
+    --jq '[.[] | {body, created_at, user, performed_via_github_app}]' \
     2>"$gh_err_file") || true
   gh_err=$(cat "$gh_err_file")
   if [ -n "$gh_err" ]; then
-    echo "::warning::${JOB_NAME} gh pr view stderr (attempt=${attempt}): ${gh_err}" >&2
+    echo "::warning::${JOB_NAME} gh api stderr (attempt=${attempt}): ${gh_err}" >&2
   fi
   if [ -n "$comments_json" ]; then
     # Nit n2: the helper's stderr used to be sent to /dev/null, so a
