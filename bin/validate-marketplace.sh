@@ -42,9 +42,19 @@ for p in mp.get('plugins', []):
     if pj_data.get('version') != p['version']:
         errs.append(f"plugin '{p['name']}': version mismatch (manifest={pj_data.get('version')})")
     for sk in pj_data.get('skills', []):
-        sk_path = (src / sk['path']).resolve()
+        # Accept either a string path (current schema) or a {id, path} object (legacy)
+        if isinstance(sk, str):
+            sk_path_str, sk_id = sk, f"{pj_data['name']}:{pathlib.Path(sk).name}"
+        else:
+            sk_path_str, sk_id = sk['path'], sk.get('id', sk['path'])
+        sk_path = (src / sk_path_str).resolve()
         if not sk_path.is_file():
-            errs.append(f"plugin '{p['name']}', skill '{sk.get('id', sk.get('path'))}': SKILL.md not found at {sk['path']}")
+            # `skills` entries are directories; resolve to <dir>/SKILL.md
+            skill_md = sk_path / 'SKILL.md'
+            if not skill_md.is_file():
+                errs.append(f"plugin '{p['name']}', skill '{sk_id}': SKILL.md not found at {sk_path_str}")
+                continue
+            sk_path = skill_md
 
 if errs:
     for e in errs: print("ERR:", e)
@@ -55,5 +65,8 @@ for p in mp['plugins']:
     print(f"  plugin: {p['name']} v{p['version']}  source={p['source']}  category={p.get('category', '-')}")
 print("\nResolved skills:")
 for sk in pj_data.get('skills', []):
-    print(f"  - {sk['id']:42s} -> {sk['path']}")
+    if isinstance(sk, str):
+        print(f"  - {pj_data['name']}:{pathlib.Path(sk).name:24s} -> {sk}/SKILL.md")
+    else:
+        print(f"  - {sk.get('id', '?'):42s} -> {sk['path']}")
 PY

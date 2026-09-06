@@ -12,17 +12,18 @@ The plugin is published through the **obsidian-organize-marketplace** marketplac
 # Add the marketplace
 claude plugin marketplace add sh-ai-x/obsidian_organize
 
-# Install the plugin
-claude plugin install obsidian-organize
-
-# Or install a single skill by ID
-claude plugin install obsidian-organize:bootstrap
-claude plugin install obsidian-organize:research
-claude plugin install obsidian-organize:add_wiki
-claude plugin install obsidian-organize:remove_wiki
+# Install the plugin (use plugin@marketplace form to disambiguate)
+claude plugin install obsidian-organize@obsidian-organize-marketplace
 ```
 
-Once installed, the four skills are available as slash commands (see below).
+Or via the slash command:
+
+```
+/plugin marketplace add sh-ai-x/obsidian_organize
+/plugin install obsidian-organize@obsidian-organize-marketplace
+```
+
+Once installed, the four skills are available as namespace-prefixed slash commands (see [Invocation](#invocation) below).
 
 ## Skills
 
@@ -159,7 +160,14 @@ This plugin is registered in the `obsidian-organize-marketplace` (v1.1.0) at `<r
 }
 ```
 
-Validate the registration locally with the bundled script at `bin/validate-marketplace.sh` (checks `marketplace.json` ↔ `plugin.json` consistency and that every `skills[].path` resolves to a real `SKILL.md`).
+Validate the registration locally:
+
+```bash
+claude plugin validate plugins/obsidian-organize      # ✔ plugin.json + every SKILL.md
+claude plugin validate .claude-plugin/marketplace.json # ✔ marketplace.json ↔ plugin.json
+```
+
+`bin/validate-marketplace.sh` is a non-CLI equivalent that fails fast if the marketplace JSON drifts from the plugin manifest.
 
 ## Acceptance criteria
 
