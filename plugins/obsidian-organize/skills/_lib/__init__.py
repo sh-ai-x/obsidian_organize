@@ -33,6 +33,18 @@ from .remove_wiki import (
     RemoveWikiResult,
     retire,
 )
+from .process_clippings import (
+    ClippingPage,
+    ProcessClippingsResult,
+    extract_topic_slug,
+    process_clippings,
+    render_clipping_page,
+    render_topic_readme,
+    resolve_clipping_page,
+    resolve_processed_path,
+    resolve_topic_dir,
+    unique_processed_path,
+)
 
 __all__ = [
     # frontmatter
@@ -59,4 +71,15 @@ __all__ = [
     # remove_wiki
     "RemoveWikiResult",
     "retire",
+    # process_clippings
+    "ClippingPage",
+    "ProcessClippingsResult",
+    "extract_topic_slug",
+    "process_clippings",
+    "render_clipping_page",
+    "render_topic_readme",
+    "resolve_clipping_page",
+    "resolve_processed_path",
+    "resolve_topic_dir",
+    "unique_processed_path",
 ]
