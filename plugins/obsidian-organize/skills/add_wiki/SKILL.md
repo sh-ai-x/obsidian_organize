@@ -15,15 +15,58 @@ sources as `[[wikilink]]` back-references and updates the staged file's
 ## Invocation
 
 ```
-/obsidian-organize:add_wiki <topic-or-file>
+/obsidian-organize:add_wiki <topic-or-file> [--local] [--force] [--no-backlinks]
 ```
 
 - `<topic-or-file>` is either a topic slug (e.g. `hermes-protocol`) or the
   direct path to a staged research file.
+- `--local` — treat the vault as a plain vault even inside a super-repo clone.
 - `--force` — overwrite an existing topic note (default: refuse).
 - `--no-backlinks` — skip the reverse-wikilink pass (useful for dry runs).
 
-## Behavior
+## Two targets
+
+Decide the target before writing anything:
+
+- **hermes-wiki-super** — a `.gitmodules` with `wiki/…` submodule entries is
+  present, so each knowledge domain is its own GitHub repo under
+  `mybotagent/`. **Read `../_shared/hermes-super.md` first** and follow it for
+  sub-repo resolution, the LLM-Wiki page format, the two-level commit, and
+  new-repo creation.
+- **plain vault** — no such `.gitmodules`. The staged file is promoted to a
+  local `topics/<topic>.md`, per the Behavior section below.
+
+Detect it, do not ask:
+
+```bash
+grep -q 'submodule "wiki/' .gitmodules 2>/dev/null && echo super || echo plain
+```
+
+`--local` forces plain-vault behavior even inside a super-repo clone.
+
+## Behavior — hermes-wiki-super
+
+1. Resolve the staged file: `<vault>/_research/<topic>.md`. Fail if missing.
+2. Resolve which existing sub-repo owns the domain, reading `.gitmodules`,
+   `wiki-map.md`, and the sub-repos' `*-hub.md` files. Prefer an existing
+   domain — a facet of a covered domain becomes a page inside it, not a new
+   repo. Only create a repo when nothing covers it, and say which and why
+   first.
+3. Write the promoted note as an LLM-Wiki **content page** inside that
+   sub-repo: `tags` / `related` / `source` frontmatter, a one-line summary
+   blockquote, then the staged body's `## Notes` as the article, and the
+   staged `sources[]` as a `## Sources` section.
+4. Add a `[[wikilink]]` row to that sub-repo's hub under the fitting section,
+   and bump the hub's `Last updated:`. Skip if a row for the page already
+   exists, so re-runs do not duplicate rows.
+5. Commit and push **inside the submodule**, then bump the pointer in the super
+   repo — or run the super repo's `sync.sh`.
+6. Only after the push succeeds, update the staged file's frontmatter:
+   `status: promoted`, `promoted_to: <owner>/<repo>#<path>`,
+   `updated: <ISO-8601>`. Marking it promoted before the push would strand the
+   research with nothing published.
+
+## Behavior — plain vault
 
 1. Resolve the staged file: `<vault>/_research/<topic>.md`. Fail if missing.
 2. Resolve the target: `<vault>/topics/<topic>.md`. Fail if it exists and
@@ -71,6 +114,10 @@ it; otherwise it runs the equivalent logic directly. No skill is shadowed.
 
 ## See also
 
-- `references/frontmatter.md` — canonical topic-note frontmatter.
+- `../_shared/hermes-super.md` — sub-repo resolution, LLM-Wiki format,
+  two-level commit, new-repo creation.
+- `references/frontmatter.md` — canonical topic-note frontmatter (plain vault).
 - `obsidian-organize:research` — produces the staged input.
+- `obsidian-organize:process_clippings` — the other writer into the same
+  sub-repos; in a plain vault it owns `wiki/` and `wiki-map.md`.
 - `obsidian-organize:remove_wiki` — retires a topic note.
