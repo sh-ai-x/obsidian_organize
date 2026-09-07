@@ -361,6 +361,38 @@ not at all. A partial merge leaves the skill describing features that
 do not exist (or vice versa) and breaks `obsidian-organize:bootstrap`
 consumers.
 
+## Troubleshooting
+
+Symptoms a user might see, the most likely cause, and the right
+recovery action. Use this when something "didn't work" but the
+output doesn't point at a specific step:
+
+- **`--hierarchical` ignored on a clearly multi-section input.** The
+  auto-enable rule requires **≥ 5 numbered sections** AND the section
+  pattern to be `## §N …` or `### N. …`. Mixed styles, descriptive
+  headings, or fewer than 5 sections disable the auto-enable. Recovery:
+  re-number the headings to match the pattern, or pass `--hierarchical`
+  explicitly to force-enable.
+- **Sibling research files land in separate top-level dirs.** The
+  `--major` flag was not passed on the second/third invocations, so
+  each file got its own auto-generated major. Recovery: re-run with the
+  same `--major <name>` on every sibling so the major hub links them.
+  The hub can be hand-edited to merge in pre-existing siblings.
+- **`--no-backlinks` did not skip Related on the new leaf.** The
+  implementation always writes the leaf's `## Related`; `--no-backlinks`
+  only skips the *reverse* pass that touches existing siblings. This is
+  by design — a leaf with no `## Related` is an isolated node.
+- **`gh` auth failure in `--mode=super`.** Stop, surface the gh
+  unauthenticated state, do not silently fall back to `--mode=single`.
+  The user must re-auth or accept a `--mode=single` run explicitly.
+- **Auto-enable kicked in for a 3-section research.** Bug — the
+  threshold is 5, not 3. File an issue with the section count + the
+  output path. Do not edit the leaf by hand; the implementation is
+  the SSOT and a one-off rename pollutes the graph.
+- **Vault root cannot be inferred.** `obsidian-organize:bootstrap`
+  MUST be run before `add_wiki`; without it the vault root is unknown
+  and the skill refuses. Recovery: invoke bootstrap first, then retry.
+
 ## Anti-patterns
 
 See `../_shared/note-schema.md` § Anti-patterns — what not to write.
