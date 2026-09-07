@@ -120,9 +120,12 @@ cd wiki/<sub-repo>
 3. Commit **inside the submodule** and push to its own remote.
 4. Return to the super repo, stage the moved submodule pointer, commit, push.
 
-`sync.sh` at the super-repo root already does steps 3–4 for every submodule at
-once; prefer running it over hand-rolling the two-level commit when several
-sub-repos changed.
+`sync.sh` at the super-repo root does steps 3-4 for **every dirty submodule at
+once**, not only the ones this run touched. That makes it the right tool only
+when this run changed several sub-repos AND the tree was clean beforehand — over
+an unclean tree it will commit and push an operator's unrelated work-in-progress
+to public repos. When in doubt, do the two-level commit by hand for the specific
+sub-repos you changed.
 
 ## Step 4 — create a new sub-repo (only when no domain fits)
 

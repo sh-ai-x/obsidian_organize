@@ -17,20 +17,29 @@ Move each file in `Clippings/` into a topic folder, then archive the original.
   the single-repo steps below.
 
 When no `--mode` is given, autodetect and **state the detected mode in the
-summary** so the choice is never silent:
+output** so the choice is never silent. Detection has three outcomes, not two —
+`ambiguous` must not collapse into `single`, or the skill would silently pick a
+mode in exactly the cases that warrant asking:
 
 ```bash
-grep -q 'submodule "wiki/' .gitmodules 2>/dev/null && echo super || echo single
+if [ ! -e .gitmodules ]; then
+  echo single                        # no submodules at all -> one repo
+elif ! grep -q 'submodule "' .gitmodules 2>/dev/null; then
+  echo ambiguous                     # unreadable or unparseable -> ask
+elif grep -q 'submodule "wiki/' .gitmodules; then
+  echo super                         # wiki/ submodules -> constellation
+else
+  echo ambiguous                     # submodules, but none under wiki/ -> ask
+fi
 ```
 
-An explicit `--mode` always wins over autodetection. `--mode=single` inside a
-super-repo clone is legitimate — it keeps a topic local instead of publishing it
-to its own repo.
+On `ambiguous`, stop and ask: say what was found (which submodules, or that
+`.gitmodules` could not be read) and which mode you propose. Never resolve an
+`ambiguous` result by falling through to a default.
 
-Ask the operator only when autodetection is ambiguous: a `.gitmodules` exists
-with non-`wiki/` submodules, or the working tree is a super-repo clone whose
-`.gitmodules` cannot be read. Say what you found and which mode you propose,
-rather than picking one quietly.
+An explicit `--mode` always wins over autodetection and skips this check
+entirely. `--mode=single` inside a super-repo clone is legitimate — it keeps a
+topic local instead of publishing it to its own repo.
 
 ## Invocation
 
@@ -103,6 +112,18 @@ For each `*.md` directly inside `<vault>/Clippings/` — skip
    `a-20260905T120000Z.md`.
 
 ## Steps — `--mode=super`
+
+**Confirm before publishing.** `--mode=super` pushes clipping content to
+**public** GitHub repos under `mybotagent/`. Clippings are raw captures and can
+hold private material — an unpublished draft, a client name, a credential pasted
+into an article. Before the first push of a non-`--dry-run` super run, list what
+will be published (each `filename -> owner/repo`) and get an explicit go-ahead.
+`--dry-run` is opt-in and cannot be relied on as the brake.
+
+Skip the confirmation only when the operator already granted it for this batch
+in the same session. Never infer consent from `--mode=super` being passed: the
+flag chooses the target, it does not authorize publishing a specific set of
+files.
 
 Same topic derivation (step 1 above), then per `../_shared/hermes-super.md`:
 
