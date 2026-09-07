@@ -443,9 +443,12 @@ def _render_sub_hub_body(
     out.append("")
     out.append("## Source")
     out.append("")
-    out.append(f"Full research dossier: [[{staged.relative_to(paths.slug_dir.parent.parent.parent).as_posix() if False else '_research/' + topic_slug + '.md'}]]")
-    # The expression above is a no-op fallback; rewrite as a clean relative path:
-    out[-1] = f"Full research dossier: [[_research/{topic_slug}.md]]"
+    # The staged research lives at <vault_root>/_research/<topic_slug>.md
+    # (see resolve_staged_path). Render the link with that vault-relative
+    # path; the leaf note and the staged file share the vault root so the
+    # wikilink resolves from anywhere under it.
+    staged_vault_rel = f"_research/{topic_slug}.md"
+    out.append(f"Full research dossier: [[{staged_vault_rel}]]")
     out.append("")
     if sources:
         out.append("## Sources")
