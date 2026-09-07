@@ -1,7 +1,7 @@
 # Wiki router
 
 Decide which `wiki/<domain>/` directory a new leaf note belongs in.
-Reference: `/Users/sanghee/Documents/Obsidian Vault/hermes-wiki-super/wiki/`
+Reference: `~/Documents/Obsidian Vault/hermes-wiki-super/wiki/`
 contents as of 2026-09-07.
 
 ## Existing domains
