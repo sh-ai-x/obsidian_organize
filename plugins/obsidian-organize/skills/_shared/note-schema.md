@@ -11,10 +11,24 @@ truth for Obsidian graph quality in this vault.
 <vault>/wiki/<domain>/<note>.md
 ```
 
+For hierarchical layouts (a staged research split into per-section
+leaf notes with auto-generated sub-hubs), see `add_wiki` § Hierarchical
+mode. The path becomes:
+
+```
+<vault>/wiki/<domain>/<slug>/<section>.md              # with --hierarchical
+<vault>/wiki/<domain>/<major>/<slug>/<section>.md     # with --major
+```
+
 - `<domain>` is a top-level knowledge area (see `wiki-router.md`).
 - `<note>` is a kebab-case filename. If a domain uses numbered pages
   (`00-index`, `01-llm-hallucination`), continue the sequence; otherwise
   use a content-derived name.
+- Hub files are always named `_index.md` (underscore prefix) so they
+  sort to the top of any directory listing. **Do not** use `00-index.md`
+  or other numbered prefixes in hierarchical layouts — the per-section
+  filenames are also unnumbered, and the hub's leading underscore is
+  the only ordering signal.
 
 ## Frontmatter
 

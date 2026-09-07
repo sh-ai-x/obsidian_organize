@@ -1,6 +1,6 @@
 ---
 name: obsidian-organize:add_wiki
-description: Write a new Karpathy-style LLM-Wiki leaf note — into the right wiki/<domain>/ locally in --mode=single, or into the matching mybotagent/hermes-wiki-super sub-repo in --mode=super. Takes free-text input or a staged _research/ file. Use when a topic note is wanted and you want it to land in the right place with proper Obsidian graph links.
+description: Write a new Karpathy-style LLM-Wiki leaf note — into the right wiki/<domain>/ locally in --mode=single, or into the matching mybotagent/hermes-wiki-super sub-repo in --mode=super. Supports flat and hierarchical layouts (per-section leaf notes under wiki/<domain>/<major>/<sub>/<section>.md). Takes free-text input or a staged _research/ file. Use when a topic note is wanted and you want it to land in the right place with proper Obsidian graph links.
 ---
 
 # obsidian-organize:add_wiki
@@ -14,7 +14,7 @@ whose `[[wikilinks]]` make the Obsidian graph view work.
 ## Invocation
 
 ```
-/obsidian-organize:add_wiki <topic-or-content> [--mode=super|single] [--force] [--dry-run] [--no-backlinks]
+/obsidian-organize:add_wiki <topic-or-content> [--mode=super|single] [--force] [--dry-run] [--no-backlinks] [--hierarchical] [--major <name>]
 ```
 
 - `<topic-or-content>` is either a topic phrase ("JWT security pitfalls")
@@ -30,6 +30,21 @@ whose `[[wikilinks]]` make the Obsidian graph view work.
 - `--dry-run` — print the planned write targets and change nothing.
 - `--no-backlinks` — skip the step that adds the new note to sibling
   notes' `## Related` sections.
+- `--hierarchical` — promote a multi-section staged research into a
+  per-section leaf-note tree under `wiki/<domain>/<slug>/<section>.md`
+  with an auto-generated `_index.md` sub-hub. See
+  [Hierarchical mode](#hierarchical-mode-multilevel-research) below.
+  Auto-enabled when a staged research file has **≥ 5 numbered sections**
+  (H2 `## §N …` or H3 `### N. …`), unless `--no-hierarchical` is also
+  passed.
+- `--major <name>` — only meaningful with `--hierarchical`. Adds one
+  extra directory level between `<domain>` and the per-topic directory:
+  `wiki/<domain>/<major>/<slug>/<section>.md`. Use when several
+  sibling research files share a parent theme (e.g. `core-ai-security`
+  grouping `threats`, `defenses`, `frameworks`). Also auto-creates a
+  `<major>/_index.md` hub that links the sibling sub-hubs.
+- `--no-hierarchical` — force the flat single-file output even when the
+  staged research has ≥ 5 sections.
 
 ## Two modes
 
@@ -172,6 +187,138 @@ more recent than any staged file).
 
    If the input did not come from a staged file, skip this step.
 
+## Hierarchical mode (multilevel research)
+
+A staged research file with many sections (`## §1` / `## §2` / …
+H2, or `### 1.` / `### 2.` / … H3) almost never maps to a single
+leaf note — the sections are themselves the natural leaf-note
+boundaries, and forcing them into one note makes a 1,000-line monster
+that defeats Obsidian navigation.
+
+`--hierarchical` (or the auto-enable rule of **≥ 5 numbered sections**)
+splits the staged research into one leaf note per section, plus an
+auto-generated sub-hub. With `--major <name>`, an extra directory
+level is added so sibling research files can share a parent theme.
+
+### When to use
+
+Use hierarchical mode when:
+
+- The staged research has ≥ 5 sections **and** each section is
+  self-contained enough to stand alone as a leaf note (the typical
+  case for 30-min+ research dossiers).
+- Multiple sibling research files share a parent theme (e.g.
+  `core-ai-security-threats`, `core-ai-security-defenses`,
+  `core-ai-security-frameworks`). Group them under `--major
+  core-ai-security` so the wiki gains a natural 3-level hierarchy.
+
+Do **not** use hierarchical mode for:
+
+- Free-text input with no staged research — there's nothing to split.
+- A staged research with 1–3 sections — split or condense the source
+  research instead; one section per leaf note is overkill.
+- The user asked for a single named topic (e.g. "JWT pitfalls") — flat
+  is right.
+
+### File-path scheme
+
+| Invocation | Per-section leaf path | Auto-generated hubs |
+|---|---|---|
+| `--hierarchical` (no `--major`) | `wiki/<domain>/<slug>/<section>.md` | `wiki/<domain>/<slug>/_index.md` (sub-hub) |
+| `--hierarchical --major <m>` | `wiki/<domain>/<m>/<slug>/<section>.md` | `wiki/<domain>/<m>/<slug>/_index.md` (sub-hub) + `wiki/<domain>/<m>/_index.md` (major hub) |
+| No flag, single-section research | `wiki/<domain>/<slug>.md` | (none) |
+
+`<slug>` is the research filename without the `.md` extension. `<section>`
+is a kebab-case derivative of the section heading (e.g. `## §3 Prompt
+Injection` → `prompt-injection.md`). Use `_index.md` (with the
+underscore prefix) for hub files so they sort to the top of any directory
+listing — never number them with a `00-` prefix.
+
+### Steps (when hierarchical kicks in)
+
+1. **Parse the staged research into sections.** H2 sections with the
+   `## §N` pattern, or H3 sections with the `### N.` pattern, are the
+   leaf-note boundaries. The H2/H3 heading number is dropped from the
+   filename; the heading text becomes the leaf-note H1.
+2. **Determine the target directory** per the table above. The
+   `<domain>` is still picked from `wiki-router.md` (e.g. the three
+   `core-ai-security-*` research files all route to
+   `ai-agent-wiki`). The `<slug>` is the staged filename without
+   `.md`. The `<major>` is the explicit `--major` value, if any.
+3. **Create the target directory tree** if it does not exist.
+4. **For each parsed section**, build a leaf note following
+   `_shared/note-schema.md`. Filename: kebab-case of the section
+   heading, ≤ 60 chars, no leading number. Body: section content as
+   written, plus a TL;DR distilled from the section's first
+   non-heading, non-table paragraph.
+5. **Auto-generate `<slug>/_index.md`** (the sub-hub): H1, one-line
+   TL;DR, `## Leaf Notes` listing each per-section file with a
+   `[[wikilink]]`, `## Source` linking back to the staged research,
+   `## Related` pointing at the parent hub, the sibling sub-hubs
+   (if `--major` is used), and the existing 00-index for the domain.
+6. **Auto-generate `<major>/_index.md`** (the major hub) **only when
+   `--major` is set**: H1, TL;DR, `## Sub-Domains` listing each
+   `<slug>/_index.md` with a `[[wikilink]]`, `## Source Research`
+   linking each staged file, `## Related` for cross-cutting siblings.
+7. **Mark the staged file as promoted** with `promoted_to:
+   wiki/<domain>/[<major>/]<slug>/_index.md` (the sub-hub, not any
+   individual leaf note — the sub-hub is the durable entry point).
+8. **Log the ingest** in `wiki/<domain>/log.md` with the leaf count
+   and a one-line description, just like the flat path. The major
+   hub's creation (if any) gets its own log entry.
+
+### Back-link rules in hierarchical mode
+
+Each per-section leaf note has the same `## Related` shape:
+
+- `[[<slug>/_index.md|<Slug> sub-hub]]`
+- `[[<major>/_index.md|<Major> hub]]` (when `--major` is set)
+- Each sister `<other-slug>/_index.md` sub-hub (when `--major` is set)
+- `[[<domain>/00-index.md|<Domain> index]]` (or whichever hub already
+  exists for the domain)
+
+This produces a dense mesh in Obsidian's graph view: per-section leaves
+→ sub-hub → major hub → 00-index, with edges to all sibling sub-hubs.
+No leaf note should be more than two hops from the domain index.
+
+### Worked example
+
+Three staged research files: `core-ai-security-threats.md`
+(14 sections), `core-ai-security-defenses.md` (10 sections),
+`core-ai-security-frameworks.md` (10 sections). Invocation:
+
+```
+/obsidian-organize:add_wiki core-ai-security-threats \
+  --hierarchical --major core-ai-security --vault /Users/sanghee/dev/mywiki
+/obsidian-organize:add_wiki core-ai-security-defenses \
+  --hierarchical --major core-ai-security --vault /Users/sanghee/dev/mywiki
+/obsidian-organize:add_wiki core-ai-security-frameworks \
+  --hierarchical --major core-ai-security --vault /Users/sanghee/dev/mywiki
+```
+
+Produced tree (38 files total):
+
+```
+wiki/ai-agent-wiki/core-ai-security/
+├── _index.md                                     (major hub)
+├── threats/
+│   ├── _index.md                                 (sub-hub)
+│   ├── executive-summary.md                      (leaf)
+│   ├── owasp-llm-top-10.md
+│   ├── prompt-injection.md
+│   ├── ...                                       (11 more)
+├── defenses/
+│   ├── _index.md
+│   ├── guardrails.md
+│   ├── ...                                       (9 more)
+└── frameworks/
+    ├── _index.md
+    ├── nist-ai-rmf.md
+    ├── ...                                       (9 more)
+```
+
+Staged files all get `promoted_to: wiki/ai-agent-wiki/core-ai-security/<slug>/_index.md` and `status: promoted`.
+
 ## Edge cases
 
 - Topic not provided and no staged file → ask once, stop.
@@ -186,6 +333,9 @@ more recent than any staged file).
 - In `--mode=super`, if `gh` is unauthenticated or cannot reach
   `mybotagent`, stop and say so. Do not silently fall back to writing
   locally — that looks like success while nothing synced.
+- Hierarchical mode + a staged research with **0 parseable sections**
+  → refuse with a clear error; do not silently fall back to flat
+  output.
 
 ## Anti-patterns
 
