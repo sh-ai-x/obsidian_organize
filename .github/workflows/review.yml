@@ -13,6 +13,16 @@ name: PR Review
 # ::warning:: in BOTH pull_request and workflow_dispatch modes. The
 # human gate (REVIEW_REQUIRED / CHANGES_REQUESTED) is what blocks merge.
 #
+# Known fall-through cases the gate does NOT silently Approve:
+#   - agent_ran=true + source=parse-failed-no-verdict: the agent finished
+#     but its execution file lacks any parseable `Verdict:` line, AND
+#     the 24x10s PR-comments fallback found no Claude Bot verdict
+#     comment. Surfaces as PARSE_FAILED + remediation text pointing at
+#     issues #612 (consumer bug) and #625 (provider stream drop). The
+#     gate hard-fails here on purpose so the operator MUST fix the
+#     prompt contract or wait for the provider to stabilize, rather
+#     than masking a broken parser as a passing review.
+#
 # Why `pull_request` (not `pull_request_target`):
 #   `anthropics/claude-code-action@558b1d6cab4085c7753fe402c10bef0fbb92ac7a # v1` does an OIDC token exchange by
 #   default. With `pull_request_target` the exchanged token is rejected
