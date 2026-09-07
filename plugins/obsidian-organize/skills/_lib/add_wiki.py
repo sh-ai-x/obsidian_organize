@@ -197,8 +197,8 @@ def _promote_hierarchical(
     )
 
     if not force and (paths.sub_hub.exists() or any(
-        (paths.leaf_dir / f"{section_title_to_slug(t)}.md").exists()
-        for _, t, _ in sections
+        (paths.leaf_dir / f"{section_title_to_slug(t, sec_num=n)}.md").exists()
+        for n, t, _ in sections
     )):
         raise FileExistsError(
             f"hierarchical destination already exists: {paths.slug_dir}; "
@@ -214,7 +214,7 @@ def _promote_hierarchical(
     leaf_entries: list[tuple[str, str, str]] = []  # (slug, title, body) for the hub
 
     for sec_num, sec_title, sec_body in sections:
-        sec_slug = section_title_to_slug(sec_title)
+        sec_slug = section_title_to_slug(sec_title, sec_num=sec_num)
         leaf_path = paths.leaf_dir / f"{sec_slug}.md"
         leaf_fm: FrontmatterDict = {
             "topic": topic_slug,

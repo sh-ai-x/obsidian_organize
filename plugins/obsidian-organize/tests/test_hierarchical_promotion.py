@@ -51,6 +51,19 @@ def test_section_title_to_slug_respects_60_char_limit():
     assert not out.endswith("-")
 
 
+def test_section_title_to_slug_fallback_disambiguates_with_sec_num():
+    """Two non-ASCII or pure-punctuation headings would otherwise both
+    fall back to `section` and collide on the same leaf filename. When
+    `sec_num` is provided the fallback is suffixed with the section
+    number so each leaf lands at a unique path."""
+    assert section_title_to_slug("---", sec_num=1) == "section-1"
+    assert section_title_to_slug("---", sec_num=7) == "section-7"
+    assert section_title_to_slug("", sec_num=2) == "section-2"
+    # Without sec_num the legacy fallback still applies (back-compat).
+    assert section_title_to_slug("---") == "section"
+    assert section_title_to_slug("") == "section"
+
+
 # ---------------------------------------------------------------------------
 # Test helper
 # ---------------------------------------------------------------------------

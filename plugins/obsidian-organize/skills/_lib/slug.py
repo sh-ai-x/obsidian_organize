@@ -30,7 +30,7 @@ def validate_topic_slug(topic: str) -> None:
         )
 
 
-def section_title_to_slug(title: str) -> str:
+def section_title_to_slug(title: str, *, sec_num: int | None = None) -> str:
     """Convert a section heading (e.g. ``OWASP LLM Top 10 — 2025 Edition``)
     to a kebab-case filename slug, ≤ 60 chars, with no leading number.
 
@@ -38,6 +38,12 @@ def section_title_to_slug(title: str) -> str:
     section filenames live under the same character set as topic slugs.
     Trailing punctuation is stripped before normalization. Output is
     guaranteed to match the topic-slug pattern when non-empty.
+
+    When the heading reduces to the empty string (pure punctuation or
+    non-ASCII characters that the slug regex strips), the function
+    falls back to ``section`` and — if ``sec_num`` is provided — appends
+    ``-N`` so two such sections in the same staged file do not collide
+    on the same leaf filename.
     """
     s = title.strip()
     # Strip trailing em-dash, en-dash, periods, colons — the heading
@@ -49,8 +55,13 @@ def section_title_to_slug(title: str) -> str:
     s = re.sub(r"-+", "-", s).strip("-")
     if not s:
         # Heading was pure punctuation or non-ASCII; fall back to a
-        # safe default so the leaf has a usable filename.
-        return "section"
+        # safe default so the leaf has a usable filename. When a section
+        # number is available, append it so two such sections in the
+        # same staged file do not both write `section.md`.
+        base = "section"
+        if sec_num is not None:
+            return f"{base}-{sec_num}"
+        return base
     if len(s) > _SECTION_TITLE_MAX:
         s = s[:_SECTION_TITLE_MAX].rstrip("-")
     return s
