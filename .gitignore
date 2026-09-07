@@ -41,3 +41,9 @@ logs/
 .dev-kit/logs/
 logs/
 # <<< dev-kit <<<
+
+# babysit-pr transient state (never commit)
+.dev-kit/babysit-state.json
+.dev-kit/babysit-checks.json
+.dev-kit/babysit.lock
+.dev-kit/babysit.log
