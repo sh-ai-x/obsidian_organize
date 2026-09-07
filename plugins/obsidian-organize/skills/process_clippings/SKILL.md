@@ -1,36 +1,41 @@
 ---
 name: obsidian-organize:process_clippings
-description: Turn raw files in an Obsidian vault's Clippings/ folder into LLM-Wiki topic entries, either locally under wiki/<topic>/ or into the matching mybotagent/hermes-wiki-super sub-repo, then archive the originals to Clippings/processed/. Use after a batch of clippings lands in the vault.
+description: Turn raw files in an Obsidian vault's Clippings/ folder into LLM-Wiki topic entries — in one repo under wiki/<topic>/ (--mode=single) or into the matching mybotagent/hermes-wiki-super sub-repo (--mode=super) — then archive the originals to Clippings/processed/. Use after a batch of clippings lands in the vault.
 ---
 
 # obsidian-organize:process_clippings
 
 Move each file in `Clippings/` into a topic folder, then archive the original.
 
-## Two targets
+## Two modes
 
-Decide the target before writing anything:
-
-- **hermes-wiki-super** — the vault is (or contains) a clone of
-  `mybotagent/hermes-wiki-super`, i.e. a `.gitmodules` with `wiki/…` submodule
-  entries is present. Each topic lives in its own GitHub repo. **Read
-  `../_shared/hermes-super.md` first** and follow it for target resolution,
+- **`--mode=super`** — each topic lives in its own GitHub repo, mounted as a
+  submodule under `wiki/` in `mybotagent/hermes-wiki-super`. **Read
+  `../_shared/hermes-super.md` first** and follow it for sub-repo resolution,
   file format, the two-level commit, and new-repo creation.
-- **plain vault** — no such `.gitmodules`. Everything stays local, per the
-  steps below.
+- **`--mode=single`** — everything stays in one repo under `wiki/<topic>/`, per
+  the single-repo steps below.
 
-Detect it, do not ask:
+When no `--mode` is given, autodetect and **state the detected mode in the
+summary** so the choice is never silent:
 
 ```bash
-grep -q 'submodule "wiki/' .gitmodules 2>/dev/null && echo super || echo plain
+grep -q 'submodule "wiki/' .gitmodules 2>/dev/null && echo super || echo single
 ```
 
-`--local` forces plain-vault behavior even inside a super-repo clone.
+An explicit `--mode` always wins over autodetection. `--mode=single` inside a
+super-repo clone is legitimate — it keeps a topic local instead of publishing it
+to its own repo.
+
+Ask the operator only when autodetection is ambiguous: a `.gitmodules` exists
+with non-`wiki/` submodules, or the working tree is a super-repo clone whose
+`.gitmodules` cannot be read. Say what you found and which mode you propose,
+rather than picking one quietly.
 
 ## Invocation
 
 ```
-/obsidian-organize:process_clippings [<vault-path>] [--dry-run] [--local]
+/obsidian-organize:process_clippings [<vault-path>] [--mode=super|single] [--dry-run]
 ```
 
 Vault root comes from the argument, else `$OBSIDIAN_VAULT`. If neither is set,
@@ -39,7 +44,9 @@ stop and say: `Set OBSIDIAN_VAULT or pass the vault path`.
 With `--dry-run`, print the plan and change nothing — including no `gh` writes,
 no commits, and no repo creation.
 
-## Steps — plain vault
+`--local` is accepted as a deprecated alias for `--mode=single`.
+
+## Steps — `--mode=single`
 
 For each `*.md` directly inside `<vault>/Clippings/` — skip
 `Clippings/processed/`, dotfiles, and `*.keep`:
@@ -95,7 +102,7 @@ For each `*.md` directly inside `<vault>/Clippings/` — skip
    If that name is taken, append a timestamp — `a.md` →
    `a-20260905T120000Z.md`.
 
-## Steps — hermes-wiki-super
+## Steps — `--mode=super`
 
 Same topic derivation (step 1 above), then per `../_shared/hermes-super.md`:
 
@@ -127,7 +134,7 @@ with the sub-repo it landed in, and anything skipped and why.
   the file you write.
 - If a file cannot be read as UTF-8, skip it and name it in the summary rather
   than failing the whole batch.
-- In super-repo mode, if `gh` is unauthenticated or cannot reach `mybotagent`,
+- In `--mode=super`, if `gh` is unauthenticated or cannot reach `mybotagent`,
   stop and say so. Do not silently fall back to writing locally — that looks
   like success while nothing synced.
 
@@ -135,7 +142,7 @@ with the sub-repo it landed in, and anything skipped and why.
 
 - `../_shared/hermes-super.md` — sub-repo resolution, LLM-Wiki format, two-level
   commit, new-repo creation.
-- `obsidian-organize:bootstrap` — creates the plain-vault layout.
+- `obsidian-organize:bootstrap` — creates the single-repo layout.
 - `obsidian-organize:add_wiki` — promotes staged research into a topic note, and
-  in super-repo mode targets the same sub-repos.
+  in `--mode=super` targets the same sub-repos.
 - `hermes-wiki-super` — the vault convention being mirrored.

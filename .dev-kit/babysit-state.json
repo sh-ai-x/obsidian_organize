@@ -1,0 +1,32 @@
+{
+  "phase": "RECOVERY_REQUIRED",
+  "parent_pr": 7,
+  "current_pr": 7,
+  "attempt": 2,
+  "commit_sha": "49ee6d3",
+  "run_id": 34080563217,
+  "failure_signature": "severity-gate: review=PARSE_FAILED security=PARSE_FAILED agent_ran=true provider=MiniMax-M3 result-envelope-has-no-result-field",
+  "unresolved_blockers": [
+    "provider MiniMax-M3 emits a type=result envelope with NO result field: only subtype/is_error/duration_ms/num_turns/total_cost_usd/permission_denials_count. The agent ran 34 turns, cost $0.934667, ended subtype=success is_error=false, and left its verdict nowhere -- not in claude-execution-output.json, not as a PR comment (bot verdict comments = 0). No parser change can extract a verdict from an absent field; scripts/extract-verdict.py:96 already reads msg.get('result')."
+  ],
+  "evidence": {
+    "review_job": "pass 6m16s",
+    "security_job": "pass 8m39s",
+    "test": "pass",
+    "validate": "pass",
+    "workflow_files_changed": 0,
+    "bootstrap_fallback": "not triggered (agent_ran=true, 0 workflow files touched)",
+    "bot_verdict_comments": 0,
+    "same_signature_on_prs": [
+      5,
+      6,
+      7
+    ]
+  },
+  "review_decision": "",
+  "scope_note": "blocker lives in the dev-kit CI template (scripts/extract-verdict.py + provider config), not in PR #7's diff; PR #7 touches only plugins/**",
+  "next_action": "human: merge #7 on the green substantive checks, OR switch the review provider off MiniMax-M3 for the review/security jobs, OR have the agent prompt write the verdict to a file the workflow reads instead of relying on the result envelope.",
+  "no_progress_iterations": 2,
+  "not_fixable_in_this_pr": "Root cause is upstream of the repo: the provider drops the assistant stream (documented at scripts/extract-verdict.py:11). Widening the parser or loosening the gate would manufacture a false green, which this session already caught twice.",
+  "updated_at": "2026-09-07T13:45:25+09:00"
+}

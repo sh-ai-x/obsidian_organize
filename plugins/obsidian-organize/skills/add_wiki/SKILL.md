@@ -1,6 +1,6 @@
 ---
 name: obsidian-organize:add_wiki
-description: Promote a staged research file into a topic note in the Obsidian vault. Use when a topic's research is complete and you want a durable, navigable entry point.
+description: Promote a staged research file into a topic note — locally in one repo (--mode=single) or into the matching mybotagent/hermes-wiki-super sub-repo (--mode=super). Use when a topic's research is complete and you want a durable, navigable entry point.
 ---
 
 # obsidian-organize:add_wiki
@@ -15,36 +15,42 @@ sources as `[[wikilink]]` back-references and updates the staged file's
 ## Invocation
 
 ```
-/obsidian-organize:add_wiki <topic-or-file> [--local] [--force] [--no-backlinks]
+/obsidian-organize:add_wiki <topic-or-file> [--mode=super|single] [--force] [--no-backlinks]
 ```
 
 - `<topic-or-file>` is either a topic slug (e.g. `hermes-protocol`) or the
   direct path to a staged research file.
-- `--local` — treat the vault as a plain vault even inside a super-repo clone.
+- `--mode=super|single` — pick the target explicitly; autodetected when omitted.
 - `--force` — overwrite an existing topic note (default: refuse).
 - `--no-backlinks` — skip the reverse-wikilink pass (useful for dry runs).
 
-## Two targets
+## Two modes
 
-Decide the target before writing anything:
+- **`--mode=super`** — each knowledge domain is its own GitHub repo under
+  `mybotagent/`, mounted as a submodule under `wiki/`. **Read
+  `../_shared/hermes-super.md` first** and follow it for sub-repo resolution,
+  the LLM-Wiki page format, the two-level commit, and new-repo creation.
+- **`--mode=single`** — the staged file is promoted to a local
+  `topics/<topic>.md` in this one repo, per the Behavior section below.
 
-- **hermes-wiki-super** — a `.gitmodules` with `wiki/…` submodule entries is
-  present, so each knowledge domain is its own GitHub repo under
-  `mybotagent/`. **Read `../_shared/hermes-super.md` first** and follow it for
-  sub-repo resolution, the LLM-Wiki page format, the two-level commit, and
-  new-repo creation.
-- **plain vault** — no such `.gitmodules`. The staged file is promoted to a
-  local `topics/<topic>.md`, per the Behavior section below.
-
-Detect it, do not ask:
+When no `--mode` is given, autodetect and **state the detected mode in the
+output** so the choice is never silent:
 
 ```bash
-grep -q 'submodule "wiki/' .gitmodules 2>/dev/null && echo super || echo plain
+grep -q 'submodule "wiki/' .gitmodules 2>/dev/null && echo super || echo single
 ```
 
-`--local` forces plain-vault behavior even inside a super-repo clone.
+An explicit `--mode` always wins over autodetection. `--mode=single` inside a
+super-repo clone is legitimate — it keeps the topic local instead of publishing
+it to its own repo.
 
-## Behavior — hermes-wiki-super
+Ask the operator only when autodetection is ambiguous: a `.gitmodules` exists
+with non-`wiki/` submodules, or it cannot be read. Say what you found and which
+mode you propose, rather than picking one quietly.
+
+`--local` is accepted as a deprecated alias for `--mode=single`.
+
+## Behavior — `--mode=super`
 
 1. Resolve the staged file: `<vault>/_research/<topic>.md`. Fail if missing.
 2. Resolve which existing sub-repo owns the domain, reading `.gitmodules`,
@@ -66,7 +72,7 @@ grep -q 'submodule "wiki/' .gitmodules 2>/dev/null && echo super || echo plain
    `updated: <ISO-8601>`. Marking it promoted before the push would strand the
    research with nothing published.
 
-## Behavior — plain vault
+## Behavior — `--mode=single`
 
 1. Resolve the staged file: `<vault>/_research/<topic>.md`. Fail if missing.
 2. Resolve the target: `<vault>/topics/<topic>.md`. Fail if it exists and
@@ -116,8 +122,8 @@ it; otherwise it runs the equivalent logic directly. No skill is shadowed.
 
 - `../_shared/hermes-super.md` — sub-repo resolution, LLM-Wiki format,
   two-level commit, new-repo creation.
-- `references/frontmatter.md` — canonical topic-note frontmatter (plain vault).
+- `references/frontmatter.md` — canonical topic-note frontmatter (`--mode=single`).
 - `obsidian-organize:research` — produces the staged input.
 - `obsidian-organize:process_clippings` — the other writer into the same
-  sub-repos; in a plain vault it owns `wiki/` and `wiki-map.md`.
+  sub-repos; in `--mode=single` it owns `wiki/` and `wiki-map.md`.
 - `obsidian-organize:remove_wiki` — retires a topic note.
