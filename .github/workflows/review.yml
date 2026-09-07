@@ -403,7 +403,26 @@ jobs:
           # root-cause). When no comment matches, the PARSE_FAILED sentinel
           # stands and the gate hard-fails with the remediation message.
           if [ "$file_verdict" = "PARSE_FAILED" ]; then
-            CUTOFF="${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}"
+            # Cutoff = the head COMMIT's own timestamp, resolved via the API.
+            # `github.event.head_commit` does not exist on a pull_request event,
+            # so this previously fell through to pull_request.updated_at --
+            # which GitHub bumps on EVERY PR activity, including the verdict
+            # comment we are waiting for and each check completing. Measured on
+            # PR #6 run 34071159742: updated_at was 01:06:40 while the agent's
+            # verdict comment landed 00:49:04, so a valid current verdict can be
+            # discarded as "stale". The head commit's date is stable and is what
+            # issue #244 actually wanted: verdicts from before this push are
+            # stale, verdicts after it are current.
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            CUTOFF=""
+            if [ -n "$HEAD_SHA" ]; then
+              CUTOFF=$(gh api "/repos/${{ github.repository }}/commits/$HEAD_SHA" \
+                --jq '.commit.committer.date' 2>/dev/null || echo "")
+            fi
+            if [ -z "$CUTOFF" ]; then
+              echo "::warning::could not resolve head-commit timestamp; falling back to pull_request.updated_at" >&2
+              CUTOFF="${{ github.event.pull_request.updated_at }}"
+            fi
             # Issue #625 retry-loop: claude-code-action posts the agent's
             # verdict PR comment ASYNCHRONOUSLY after the agent-run step
             # completes -- there is a ~30s race window in which this
@@ -720,7 +739,26 @@ jobs:
           # to recover the verdict from the most recent claude-prefixed
           # PR comment. Cutoff filter avoids stale verdicts (issue #244).
           if [ "$file_verdict" = "PARSE_FAILED" ]; then
-            CUTOFF="${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}"
+            # Cutoff = the head COMMIT's own timestamp, resolved via the API.
+            # `github.event.head_commit` does not exist on a pull_request event,
+            # so this previously fell through to pull_request.updated_at --
+            # which GitHub bumps on EVERY PR activity, including the verdict
+            # comment we are waiting for and each check completing. Measured on
+            # PR #6 run 34071159742: updated_at was 01:06:40 while the agent's
+            # verdict comment landed 00:49:04, so a valid current verdict can be
+            # discarded as "stale". The head commit's date is stable and is what
+            # issue #244 actually wanted: verdicts from before this push are
+            # stale, verdicts after it are current.
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            CUTOFF=""
+            if [ -n "$HEAD_SHA" ]; then
+              CUTOFF=$(gh api "/repos/${{ github.repository }}/commits/$HEAD_SHA" \
+                --jq '.commit.committer.date' 2>/dev/null || echo "")
+            fi
+            if [ -z "$CUTOFF" ]; then
+              echo "::warning::could not resolve head-commit timestamp; falling back to pull_request.updated_at" >&2
+              CUTOFF="${{ github.event.pull_request.updated_at }}"
+            fi
             # Issue #625 retry-loop — delegated to _verdict_comments_fallback.sh
             # so the review + security jobs share a single SSOT (the pre-F1
             # fix copy-pasted this 25-line block into both jobs).
