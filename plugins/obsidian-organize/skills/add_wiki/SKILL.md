@@ -41,7 +41,7 @@ output so the choice is never silent. Detection has three outcomes, not two;
 a mode in exactly the cases that warrant asking:
 
 ```bash
-vault="${{OBSIDIAN_VAULT:-<vault-path-from-arg>}}"
+vault="${OBSIDIAN_VAULT:-<vault-path-from-arg>}"
 gm="$vault/.gitmodules"
 if [ ! -e "$gm" ]; then
   echo single                        # no submodules at all -> one repo
@@ -68,6 +68,10 @@ topic local instead of publishing it to its own repo.
 
 ## Behavior — `--mode=super`
 
+> **Publish guard:** follow the **Confirm before publishing** section in
+> `../_shared/hermes-super.md` before the first non-`--dry-run` push of a
+> session. `--dry-run` cannot be the brake.
+
 1. Resolve the staged file: `<vault>/_research/<topic>.md`. Fail if missing.
 2. Resolve which existing sub-repo owns the domain, reading `.gitmodules`,
    `wiki-map.md`, and the sub-repos' `*-hub.md` files. Prefer an existing
@@ -82,7 +86,7 @@ topic local instead of publishing it to its own repo.
    and bump the hub's `Last updated:`. Skip if a row for the page already
    exists, so re-runs do not duplicate rows.
 5. Commit and push **inside the submodule**, then bump the pointer in the super
-   repo — or run the super repo's `sync.sh`.
+   repo — or, only if the tree was clean beforehand, the super repo's `sync.sh` (which commits and pushes *every* dirty submodule, not just this run's; see the caveat in `_shared/hermes-super.md`).
 6. Only after the push succeeds, update the staged file's frontmatter:
    `status: promoted`, `promoted_to: <owner>/<repo>#<path>`,
    `updated: <ISO-8601>`. Marking it promoted before the push would strand the

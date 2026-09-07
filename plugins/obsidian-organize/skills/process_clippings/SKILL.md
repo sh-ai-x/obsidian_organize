@@ -24,7 +24,7 @@ output so the choice is never silent. Detection has three outcomes, not two;
 a mode in exactly the cases that warrant asking:
 
 ```bash
-vault="${{OBSIDIAN_VAULT:-<vault-path-from-arg>}}"
+vault="${OBSIDIAN_VAULT:-<vault-path-from-arg>}"
 gm="$vault/.gitmodules"
 if [ ! -e "$gm" ]; then
   echo single                        # no submodules at all -> one repo
@@ -131,7 +131,9 @@ Same topic derivation (step 1 above), then per `../_shared/hermes-super.md`:
 3. Add a `[[wikilink]]` row to that sub-repo's hub under the fitting section and
    bump the hub's `Last updated:`.
 4. Commit and push **inside the submodule**, then bump the pointer in the super
-   repo — or run the super repo's `sync.sh`, which does both for every changed
+   repo — or, only if the tree was clean beforehand, the super repo's `sync.sh`
+  (which commits and pushes *every* dirty submodule, not just this run's; see
+  the caveat in `_shared/hermes-super.md`).
    submodule.
 5. Only if no sub-repo covers the domain, create one and register it in
    `.gitmodules` + `wiki-map.md`. Say which repo you are creating and why
