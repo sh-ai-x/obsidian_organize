@@ -1,16 +1,16 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "obsidian-organize-marketplace",
-  "version": "1.2.0",
-  "description": "Personal-knowledge-management plugins for Obsidian vaults. Ships the obsidian-organize plugin with five skills: bootstrap (vault layout matching hermes-wiki-super's Clippings-processed / wiki / wiki-map), process_clippings (turn raw Clippings/ files into wiki/<topic>/ entries), research (gather source material), add_wiki (promote to topic note), remove_wiki (retire topic + archive).",
+  "version": "1.3.0",
+  "description": "Personal-knowledge-management plugins for Obsidian vaults. Ships the obsidian-organize plugin with five skills: bootstrap (vault layout matching hermes-wiki-super's Clippings-processed / wiki / wiki-map), process_clippings (turn raw Clippings/ files into wiki/<topic>/ entries), research (gather source material), add_wiki (promote to topic note, with --hierarchical / --major flags for multi-section research that becomes a per-section leaf-note tree), remove_wiki (retire topic + archive).",
   "owner": {
     "name": "sh-ai-x"
   },
   "plugins": [
     {
       "name": "obsidian-organize",
-      "description": "Topic-organizer for Obsidian vaults. Exposes four skills on the namespace:skill convention: obsidian-organize:bootstrap (set up Clippings-processed / wiki / wiki-map layout), obsidian-organize:research (gather source material), obsidian-organize:add_wiki (promote to topic note), obsidian-organize:remove_wiki (retire topic + archive). Inherits frontmatter + tag conventions from hermes-wiki-super's add-wiki and process-clippings.",
-      "version": "0.3.0",
+      "description": "Topic-organizer for Obsidian vaults. Exposes five skills on the namespace:skill convention: obsidian-organize:bootstrap (set up Clippings-processed / wiki / wiki-map layout), obsidian-organize:research (gather source material), obsidian-organize:process_clippings (distill raw Clippings/ into leaf notes), obsidian-organize:add_wiki (promote to topic note, including --hierarchical / --major modes for multi-section research), obsidian-organize:remove_wiki (retire topic + archive). Inherits frontmatter + tag conventions from hermes-wiki-super's add-wiki and process-clippings.",
+      "version": "0.5.0",
       "author": {
         "name": "sh-ai-x"
       },
