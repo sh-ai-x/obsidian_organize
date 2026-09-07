@@ -1,6 +1,6 @@
 ---
 name: obsidian-organize:add_wiki
-description: Write a new Karpathy-style LLM-Wiki leaf note — into the right wiki/<domain>/ locally in --mode=single, or into the matching mybotagent/hermes-wiki-super sub-repo in --mode=super. Supports flat and hierarchical layouts (per-section leaf notes under wiki/<domain>/<major>/<sub>/<section>.md). Takes free-text input or a staged _research/ file. Use when a topic note is wanted and you want it to land in the right place with proper Obsidian graph links.
+description: Write a new Karpathy-style LLM-Wiki leaf note — into the right wiki/<domain>/ locally in --mode=single, or into the matching mybotagent/hermes-wiki-super sub-repo in --mode=super. Supports flat and hierarchical layouts (per-section leaf notes under wiki/<domain>/<slug>/<section>.md, or wiki/<domain>/<major>/<slug>/<section>.md with --major). Takes free-text input or a staged _research/ file. Use when a topic note is wanted and you want it to land in the right place with proper Obsidian graph links.
 ---
 
 # obsidian-organize:add_wiki
