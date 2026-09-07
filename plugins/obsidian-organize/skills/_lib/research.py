@@ -76,6 +76,44 @@ def write_staged_file(
     return ResearchResult(staged_path=path, topic=topic, frontmatter=fm)
 
 
+def write_hierarchical_staged_file(
+    vault_root: Path,
+    topic: str,
+    *,
+    sections: list[tuple[int, str]],
+    sources: list[str],
+    body: str,
+    now: datetime | None = None,
+) -> ResearchResult:
+    """Stage a research file with a fully-formed body (test + tooling helper).
+
+    The caller pre-builds the body markdown — typically with
+    ``## §N Title`` H2 sections — and the function just writes it to
+    the canonical staged path with the standard frontmatter. Used by
+    tests for the hierarchical promotion path, and by future tooling
+    that already has section structure in hand.
+    """
+    topic_slug = normalize_topic_slug(topic)
+    validate_topic_slug(topic_slug)
+    path = resolve_staged_path(vault_root, topic_slug)
+
+    if path.exists():
+        raise FileExistsError(
+            f"staged file already exists: {path}; remove it first or use a different topic"
+        )
+
+    when = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+    fm: FrontmatterDict = {
+        "topic": topic_slug,
+        "created": when,
+        "sources": list(sources),
+        "status": "staged",
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(serialize_frontmatter(fm, body), encoding="utf-8")
+    return ResearchResult(staged_path=path, topic=topic_slug, frontmatter=fm)
+
+
 def _render_body(sources: list[str], notes: list[str]) -> str:
     out: list[str] = ["## Sources", ""]
     if not sources:
@@ -93,3 +131,4 @@ def _render_body(sources: list[str], notes: list[str]) -> str:
             out.append(f"> {note}")
     out.append("")
     return "\n".join(out)
+
