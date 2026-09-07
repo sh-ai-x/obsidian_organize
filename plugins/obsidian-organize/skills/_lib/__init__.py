@@ -12,11 +12,18 @@ from .frontmatter import (
     update_frontmatter_field,
     FrontmatterDict,
 )
-from .slug import normalize_topic_slug, validate_topic_slug
+from .slug import (
+    normalize_topic_slug,
+    section_title_to_slug,
+    validate_topic_slug,
+)
 from .paths import (
+    HierarchicalPaths,
+    resolve_hierarchical_paths,
     resolve_staged_path,
     resolve_topic_path,
     resolve_archive_path,
+    detect_wiki_domain,
     scan_backlinks,
     BACKLINK_MARKER_TEMPLATE,
 )
@@ -24,6 +31,7 @@ from .research import (
     ResearchInput,
     ResearchResult,
     write_staged_file,
+    write_hierarchical_staged_file,
 )
 from .add_wiki import (
     AddWikiResult,
@@ -42,17 +50,22 @@ __all__ = [
     "FrontmatterDict",
     # slug
     "normalize_topic_slug",
+    "section_title_to_slug",
     "validate_topic_slug",
     # paths
+    "HierarchicalPaths",
+    "resolve_hierarchical_paths",
     "resolve_staged_path",
     "resolve_topic_path",
     "resolve_archive_path",
+    "detect_wiki_domain",
     "scan_backlinks",
     "BACKLINK_MARKER_TEMPLATE",
     # research
     "ResearchInput",
     "ResearchResult",
     "write_staged_file",
+    "write_hierarchical_staged_file",
     # add_wiki
     "AddWikiResult",
     "promote",

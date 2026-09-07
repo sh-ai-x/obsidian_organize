@@ -11,6 +11,15 @@ name: Repair adapter on review
 #     are owned by the coordinator state and /dev-kit:babysit-pr.
 #
 # Required secret: MINIMAX_API_KEY (same as review.yml).
+#
+# Issue #612 / #625 corollary: when the review.yml LLM review agent
+# drops its assistant stream (claude-code-action@v1 wrapper occasionally
+# drops the stream on long-running PRs), this workflow's review step
+# also reads from the same comment-fallback path (`review.body`).
+# The fallback handles the case where the agent posted no body by
+# emitting a synthetic `(empty)` placeholder, so downstream repair
+# tooling never crashes on a missing field. See review.yml §
+# _verdict_comments_fallback.sh for the comment-resolution order.
 
 on:
   pull_request_review:
