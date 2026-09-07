@@ -16,26 +16,32 @@ Move each file in `Clippings/` into a topic folder, then archive the original.
 - **`--mode=single`** — everything stays in one repo under `wiki/<topic>/`, per
   the single-repo steps below.
 
-When no `--mode` is given, autodetect and **state the detected mode in the
-output** so the choice is never silent. Detection has three outcomes, not two —
-`ambiguous` must not collapse into `single`, or the skill would silently pick a
-mode in exactly the cases that warrant asking:
+When no `--mode` is given, autodetect at the **resolved vault root**
+(`$OBSIDIAN_VAULT`, or the vault path passed as the first argument) — not the
+current working directory, which may differ. State the detected mode in the
+output so the choice is never silent. Detection has three outcomes, not two;
+`ambiguous` must not collapse into `single`, or the skill would silently pick
+a mode in exactly the cases that warrant asking:
 
 ```bash
-if [ ! -e .gitmodules ]; then
+vault="${{OBSIDIAN_VAULT:-<vault-path-from-arg>}}"
+gm="$vault/.gitmodules"
+if [ ! -e "$gm" ]; then
   echo single                        # no submodules at all -> one repo
-elif ! grep -q 'submodule "' .gitmodules 2>/dev/null; then
+elif ! grep -q 'submodule "' "$gm" 2>/dev/null; then
   echo ambiguous                     # unreadable or unparseable -> ask
-elif grep -q 'submodule "wiki/' .gitmodules; then
+elif grep -q 'submodule "wiki/' "$gm"; then
   echo super                         # wiki/ submodules -> constellation
 else
   echo ambiguous                     # submodules, but none under wiki/ -> ask
 fi
 ```
 
-On `ambiguous`, stop and ask: say what was found (which submodules, or that
-`.gitmodules` could not be read) and which mode you propose. Never resolve an
-`ambiguous` result by falling through to a default.
+On `ambiguous`, stop and ask: say what was found and which mode you propose.
+Never resolve an `ambiguous` result by falling through to a default.
+
+The `cd "$vault"` that precedes every path write in the steps below also
+applies the detector; do not `cd` again just for the check.
 
 An explicit `--mode` always wins over autodetection and skips this check
 entirely. `--mode=single` inside a super-repo clone is legitimate — it keeps a
@@ -113,17 +119,7 @@ For each `*.md` directly inside `<vault>/Clippings/` — skip
 
 ## Steps — `--mode=super`
 
-**Confirm before publishing.** `--mode=super` pushes clipping content to
-**public** GitHub repos under `mybotagent/`. Clippings are raw captures and can
-hold private material — an unpublished draft, a client name, a credential pasted
-into an article. Before the first push of a non-`--dry-run` super run, list what
-will be published (each `filename -> owner/repo`) and get an explicit go-ahead.
-`--dry-run` is opt-in and cannot be relied on as the brake.
-
-Skip the confirmation only when the operator already granted it for this batch
-in the same session. Never infer consent from `--mode=super` being passed: the
-flag chooses the target, it does not authorize publishing a specific set of
-files.
+> **Publish guard:** see the **Confirm before publishing** section in `../_shared/hermes-super.md` before any non-`--dry-run` push in `--mode=super`.
 
 Same topic derivation (step 1 above), then per `../_shared/hermes-super.md`:
 

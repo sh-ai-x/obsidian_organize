@@ -33,26 +33,32 @@ sources as `[[wikilink]]` back-references and updates the staged file's
 - **`--mode=single`** — the staged file is promoted to a local
   `topics/<topic>.md` in this one repo, per the Behavior section below.
 
-When no `--mode` is given, autodetect and **state the detected mode in the
-output** so the choice is never silent. Detection has three outcomes, not two —
-`ambiguous` must not collapse into `single`, or the skill would silently pick a
-mode in exactly the cases that warrant asking:
+When no `--mode` is given, autodetect at the **resolved vault root**
+(`$OBSIDIAN_VAULT`, or the vault path passed as the first argument) — not the
+current working directory, which may differ. State the detected mode in the
+output so the choice is never silent. Detection has three outcomes, not two;
+`ambiguous` must not collapse into `single`, or the skill would silently pick
+a mode in exactly the cases that warrant asking:
 
 ```bash
-if [ ! -e .gitmodules ]; then
+vault="${{OBSIDIAN_VAULT:-<vault-path-from-arg>}}"
+gm="$vault/.gitmodules"
+if [ ! -e "$gm" ]; then
   echo single                        # no submodules at all -> one repo
-elif ! grep -q 'submodule "' .gitmodules 2>/dev/null; then
+elif ! grep -q 'submodule "' "$gm" 2>/dev/null; then
   echo ambiguous                     # unreadable or unparseable -> ask
-elif grep -q 'submodule "wiki/' .gitmodules; then
+elif grep -q 'submodule "wiki/' "$gm"; then
   echo super                         # wiki/ submodules -> constellation
 else
   echo ambiguous                     # submodules, but none under wiki/ -> ask
 fi
 ```
 
-On `ambiguous`, stop and ask: say what was found (which submodules, or that
-`.gitmodules` could not be read) and which mode you propose. Never resolve an
-`ambiguous` result by falling through to a default.
+On `ambiguous`, stop and ask: say what was found and which mode you propose.
+Never resolve an `ambiguous` result by falling through to a default.
+
+The `cd "$vault"` that precedes every path write in the steps below also
+applies the detector; do not `cd` again just for the check.
 
 An explicit `--mode` always wins over autodetection and skips this check
 entirely. `--mode=single` inside a super-repo clone is legitimate — it keeps a

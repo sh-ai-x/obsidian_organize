@@ -106,7 +106,22 @@ Conventions that matter:
 - Korean prose in descriptions is normal here — match the register of the
   sub-repo you are writing into rather than translating it.
 
+## Confirm before publishing
+
+`--mode=super` writes content to **public** GitHub repos under `mybotagent/`.
+Clippings and staged research are raw captures; they can hold private material
+— an unpublished draft, a client name, a credential pasted into an article.
+Before the first non-`--dry-run` push of a session, list what will be published
+(each `filename -> owner/repo` and the resolved sub-repo) and get an explicit
+go-ahead. `--dry-run` cannot be the brake: it is opt-in and not all writers
+support it. The flag chooses the target; it does not authorize publishing a
+specific set of files.
+
+Skip the confirmation only when the operator already granted it for this batch
+in the same session.
+
 ## Step 3 — write into an existing sub-repo
+
 
 ```bash
 # work inside the submodule, not the super repo
