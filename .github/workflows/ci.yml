@@ -2,6 +2,15 @@ name: CI
 
 # Branch-policy: warn-only on direct push to main (matches .githooks/pre-push locally).
 # Requires PR review before merge.
+#
+# Note: ci.yml currently runs three independent jobs (branch-policy,
+# test, validate). The `review` and `security` LLM-review jobs live in
+# review.yml; the severity gate that combines their verdicts lives in
+# that same file. ci.yml is intentionally minimal so the test/validate
+# surface can run on docs-only PRs without paying for the LLM review
+# cost. PRs that change a workflow file under .github/workflows/ opt
+# into the agent review via the bootstrap-PR exception (review.yml §
+# needs_fallback) — see that file for the documented contract.
 on:
   push:
     branches: [main]
