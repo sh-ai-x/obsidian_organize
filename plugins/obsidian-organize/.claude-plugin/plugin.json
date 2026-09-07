@@ -1,7 +1,7 @@
 {
   "name": "obsidian-organize",
-  "version": "0.4.0",
-  "description": "Obsidian-vault organizer in the hermes-wiki-super LLM-Wiki style. Five skills — bootstrap (vault layout matching hermes-wiki-super), research (stage source material in hermes frontmatter shape), process_clippings (distill raw Clippings/ into leaf notes under wiki/<domain>/), add_wiki (write a leaf note from a topic, free text, or staged file), remove_wiki (retire a leaf note + clean up back-links). Leaf notes use flat keyword tags, a related: list, a TL;DR blockquote, and a ## Related section with [[wikilinks]] so Obsidian's graph view stays connected.",
+  "version": "0.5.0",
+  "description": "Obsidian-vault organizer in the hermes-wiki-super LLM-Wiki style. Five skills — bootstrap (vault layout matching hermes-wiki-super), research (stage source material in hermes frontmatter shape), process_clippings (distill raw Clippings/ into leaf notes under wiki/<domain>/), add_wiki (write a leaf note from a topic, free text, or staged file; supports --hierarchical and --major flags for multi-section research that becomes a per-section leaf-note tree with auto-generated _index.md hubs), remove_wiki (retire a leaf note + clean up back-links). Leaf notes use flat keyword tags, a related: list, a TL;DR blockquote, and a ## Related section with [[wikilinks]] so Obsidian's graph view stays connected.",
   "skills": [
     "./skills/bootstrap",
     "./skills/process_clippings",
