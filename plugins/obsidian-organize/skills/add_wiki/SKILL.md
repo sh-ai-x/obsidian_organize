@@ -337,6 +337,30 @@ Staged files all get `promoted_to: wiki/ai-agent-wiki/core-ai-security/<slug>/_i
   → refuse with a clear error; do not silently fall back to flat
   output.
 
+## Cross-PR contract
+
+The CLI behavior described in this SKILL.md is delivered by the
+`obsidian-organize:add_wiki` Python implementation in
+`../_lib/add_wiki.py` (PR #10). The skill above is the contract; the
+implementation is the SSOT for argument parsing, slug derivation,
+section splitting, and index-hub generation. When the two diverge:
+
+- If the SKILL.md describes a flag the implementation does not yet
+  honor → treat the SKILL.md as the spec; flag the gap in the PR
+  thread; refuse to merge until implementation catches up.
+- If the implementation supports a flag the SKILL.md does not describe
+  → flag the gap; the SKILL.md MUST be updated before merging any
+  implementation change, so users never see an undocumented flag.
+- Flag interactions live in the SKILL.md (--hierarchical +
+  --major; --hierarchical auto-enable at ≥ 5 sections). The
+  implementation MUST follow the auto-enable rule exactly — flipping
+  the threshold is a behavior change, not a bug fix.
+
+The two PRs (this one + the implementation PR) must merge together or
+not at all. A partial merge leaves the skill describing features that
+do not exist (or vice versa) and breaks `obsidian-organize:bootstrap`
+consumers.
+
 ## Anti-patterns
 
 See `../_shared/note-schema.md` § Anti-patterns — what not to write.
