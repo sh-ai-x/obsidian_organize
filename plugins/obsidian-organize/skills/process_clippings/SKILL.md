@@ -1,12 +1,18 @@
 ---
 name: obsidian-organize:process_clippings
-description: Turn raw files in an Obsidian vault's Clippings/ folder into LLM-Wiki topic entries under wiki/<topic>/, then archive the originals to Clippings/processed/. Use after a batch of clippings lands in the vault.
+description: Distill raw files in an Obsidian vault's Clippings/ folder into Karpathy-style LLM-Wiki leaf notes under the right wiki/<domain>/, append to the domain log, and archive the originals to Clippings/processed/. Use after a batch of clippings lands in the vault.
 ---
 
 # obsidian-organize:process_clippings
 
-Move each file in `Clippings/` into a topic folder under `wiki/`, then
-archive the original.
+Take a raw clipping (a markdown file dropped into `Clippings/`), distill it
+into a single leaf note in the appropriate `wiki/<domain>/`, link it into
+the graph, and archive the original.
+
+The output is **a properly-formed LLM-Wiki leaf note** that follows the
+convention in `../_shared/note-schema.md` — flat keyword tags, explicit
+`related:` list, TL;DR blockquote, and a `## Related` section with
+`[[wikilinks]]`. This is what makes Obsidian's graph view work.
 
 ## Invocation
 
@@ -17,84 +23,148 @@ archive the original.
 Vault root comes from the argument, else `$OBSIDIAN_VAULT`. If neither is
 set, stop and say: `Set OBSIDIAN_VAULT or pass the vault path`.
 
-With `--dry-run`, print the plan and change nothing.
+With `--dry-run`, print the planned write targets and change nothing.
+
+## Reference
+
+- `../_shared/note-schema.md` — canonical leaf-note shape (read first)
+- `../_shared/wiki-router.md` — which `wiki/<domain>/` a topic belongs in
 
 ## Steps
 
 For each `*.md` directly inside `<vault>/Clippings/` — skip
 `Clippings/processed/`, dotfiles, and `*.keep`:
 
-1. **Pick the topic.** Use the file's first `# H1`. If there is no H1,
-   use the filename without its extension. Lowercase it, and replace
-   spaces and underscores with hyphens. Keep non-ASCII characters as they
-   are, so Korean and other CJK headings stay readable as folder names.
-   Never let a topic contain `/`, `\`, or be made only of dots — if it
-   would, use `untitled` instead.
+### 1. Read the clipping
 
-2. **Write the topic hub** at `wiki/<topic>/README.md`, only if it does
-   not already exist:
+Read the whole file. Parse its frontmatter. Capture:
+- `title:` (or first H1) → becomes the leaf note's H1
+- `source:` / `url:` → the leaf note's `source:` frontmatter
+- `author:` → include in the body if it identifies the author
+- `published:` → include in the body
+- `description:` → the seed for the TL;DR blockquote
+- `tags:` from the original → candidate tags for the new note (validate
+  against `note-schema.md` rules before reusing)
 
-   ```markdown
-   # <topic>
+Strip any leading UTF-8 BOM.
 
-   > <one-line description of the topic> — Karpathy-style LLM Wiki
-   > Created: <YYYY-MM-DD>
+### 2. Distill into a leaf note
 
-   ## Contents
+Read the body once. The clipping is a source; the leaf note is a
+**distillation**. Apply these rules:
 
-   - [clippings/](clippings/) — raw research sources indexed here.
-   ```
+- Keep only non-obvious, hard-to-rediscover insight. Delete install
+  guides, basic tutorials, and anything re-stating official docs.
+- Preserve the author's exact phrasing only when it carries unique
+  weight (a definition, a quote that crystallizes the concept). Mark
+  the quoted span as a blockquote.
+- Replace prose with tables / code blocks / ASCII diagrams when those
+  are denser.
+- Aim for 1–5 KB. If the distilled note exceeds 5 KB, look for sections
+  that belong in a separate note and split.
 
-   You write the description line — one sentence, from reading the
-   clipping.
+### 3. Pick the destination
 
-3. **Write the clipping page** at `wiki/<topic>/clippings/<filename>`,
-   with the original body kept verbatim under this frontmatter:
+Read `../_shared/wiki-router.md` and pick the `wiki/<domain>/` for the
+topic. If the destination is unclear, **stop and ask the user** — do
+not guess. Guessing creates orphan notes that pollute the graph.
 
-   ```markdown
-   ---
-   type: clipping
-   topic: <topic>
-   source: <original filename>
-   processed: <YYYY-MM-DD>
-   ---
+If a new wiki is needed, follow the "New wiki" procedure in the router
+file.
 
-   <original body, unchanged>
-   ```
+### 4. Pick the filename
 
-4. **Add a row to `wiki-map.md`** at the vault root, pointing at the new
-   topic. Create the file with a `# Wiki Map` heading first if it is
-   missing. Skip this if a row for the same topic and filename is already
-   there, so re-runs do not duplicate rows.
+- If the target domain uses numbered pages (`00-…`, `01-…`), continue
+  the sequence with the next free number.
+- Otherwise use a kebab-case content-derived name (no extension).
+- If a file with the same name already exists in the domain, **append**
+  a date suffix (`-2026-09-07.md`) rather than overwriting.
 
-   ```markdown
-   | [[wiki/<topic>/README|<topic>]] | `<filename>` | <YYYY-MM-DD> |
-   ```
+### 5. Write the leaf note
 
-5. **Archive the original** by moving it to
-   `Clippings/processed/<filename>`. Do this last: if anything above
-   failed, the file stays in `Clippings/` and a re-run picks it up again.
-   Moving it first would silently lose the clipping. If that name is
-   taken, append a timestamp — `a.md` → `a-20260905T120000Z.md`.
+Path: `<vault>/wiki/<domain>/<filename>.md`.
+
+Build the frontmatter per `_shared/note-schema.md`. Three things matter
+most:
+
+- **Tags**: flat keywords, 3–7 entries, all shared with at least one
+  other existing note in the domain. Scan the domain's existing notes
+  first; reuse their vocabulary.
+- **`related:`**: 2–5 vault-relative paths. At least one inside the
+  same domain; at least one cross-domain if one exists.
+- **`source:`**: the original URL or path from step 1.
+
+Then the body: H1, TL;DR blockquote, sections, `## Related` with
+`[[wikilinks]]`.
+
+### 6. Update the domain's `log.md`
+
+Append one entry to `<vault>/wiki/<domain>/log.md`:
+
+```markdown
+## [<YYYY-MM-DD>] ingest | <Note Title>
+<one-line summary of what was distilled from the clipping>
+```
+
+If `log.md` does not exist, create it with a `# <Domain> — Change Log`
+header before the first entry.
+
+### 7. Update the root `wiki-map.md`
+
+If the root `wiki-map.md` does not exist, create it with a `# Wiki Map`
+header. Append a bullet linking to the new note inside the section for
+its domain. Use the form:
+
+```markdown
+- [[wiki/<domain>/<filename>|<Note Title>]] — <one-line summary>
+```
+
+If a bullet for this exact `domain/filename` already exists, skip the
+write (re-runs do not duplicate).
+
+### 8. Update sibling notes' `## Related` (when natural)
+
+If the new note strongly relates to one or two existing notes in the
+same domain, add a one-line `## Related` entry to those existing notes
+pointing at the new note. This is the only step that edits other
+people's notes; do it sparingly and only when the relationship is
+obvious from the content.
+
+### 9. Archive the original
+
+Move the original from `<vault>/Clippings/<filename>` to
+`<vault>/Clippings/processed/<filename>`. Do this **last** — if any
+prior step failed, the file stays in `Clippings/` and a re-run picks it
+up. If `<vault>/Clippings/processed/<filename>` already exists, append
+a timestamp: `<filename>-<YYYYMMDDTHHMMSSZ>.md`.
 
 Then print a short summary: how many were processed, each
-`topic ← filename`, and anything skipped and why.
+`domain/filename ← original filename`, the chosen tags + related
+links, and anything skipped and why.
 
 ## Notes
 
 - `Clippings/` missing or empty → say `nothing to process` and stop.
-- Two clippings on one topic → both go under the same
-  `wiki/<topic>/clippings/`; the topic README is written once.
-- Strip a leading UTF-8 BOM before looking for the H1, and do not carry
-  it into the file you write.
-- If a file cannot be read as UTF-8, skip it and name it in the summary
-  rather than failing the whole batch.
+- Two clippings on the same topic → distill each into its own note;
+  pick filenames that distinguish them. Do not merge.
+- If a file cannot be read as UTF-8, skip it and name it in the
+  summary rather than failing the whole batch.
+- Always re-read `wiki-map.md` before writing to it. Preserve the
+  existing structure (frontmatter, sections) — append, do not rewrite.
+- A "clipping" is the input. A "leaf note" is the output. The two
+  are not the same file. Do not copy the clipping into the wiki.
+
+## Anti-patterns — see also
+
+- `../_shared/note-schema.md` § Anti-patterns — what not to write
+- `../_shared/wiki-router.md` — when to ask vs. when to route
 
 ## See also
 
+- `obsidian-organize:add_wiki` — same leaf-note shape, but takes free
+  text or a staged `_research/` file instead of a raw clipping.
+- `obsidian-organize:research` — produces staged research files that
+  add_wiki can later promote.
 - `obsidian-organize:bootstrap` — creates the vault layout this skill
   writes into.
-- `obsidian-organize:add_wiki` — promotes staged research into
-  `topics/<topic>.md`. It does not touch `wiki/` or `wiki-map.md`;
-  this skill is the only writer of `wiki-map.md`.
 - `hermes-wiki-super` — the vault convention being mirrored.
