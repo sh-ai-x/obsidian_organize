@@ -1,0 +1,5 @@
+description = "Promote topic/staged research into Karpathy-style wiki leaf notes"
+prompt = """
+Execute the obsidian-organize:add_wiki skill to write Karpathy-style leaf notes under wiki/<domain>/ with flat tags, related links, and ## Related graph wikilinks.
+Supports --hierarchical and --major flags for multi-section research.
+"""

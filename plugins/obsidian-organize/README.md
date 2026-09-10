@@ -1,6 +1,6 @@
 # obsidian-organize
 
-A Claude Code plugin that organizes an Obsidian vault in the
+A plugin for **Claude Code**, **Codex**, and **Google Antigravity (`agy`)** that organizes an Obsidian vault in the
 `hermes-wiki-super` LLM-Wiki style.
 
 > **Version 0.5.0** — adds hierarchical promotion (`add_wiki
@@ -42,8 +42,11 @@ threshold, path scheme, back-link rules, troubleshooting).
 
 ```
 plugins/obsidian-organize/
+├── plugin.json              # Antigravity (agy) manifest
 ├── .claude-plugin/
-│   └── plugin.json          # version 0.5.0
+│   └── plugin.json          # Claude Code manifest (version 0.5.0)
+├── .codex-plugin/
+│   └── plugin.json          # Codex manifest
 ├── skills/
 │   ├── _shared/             # shared references for the LLM-driven flow
 │   │   ├── note-schema.md   # canonical leaf-note frontmatter + body

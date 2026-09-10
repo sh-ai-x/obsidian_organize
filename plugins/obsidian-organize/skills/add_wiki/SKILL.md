@@ -412,3 +412,23 @@ See `../_shared/note-schema.md` § Anti-patterns — what not to write.
 - `obsidian-organize:bootstrap` — creates the vault layout this skill
   writes into
 - `hermes-wiki-super` — the vault convention being mirrored
+
+## Examples
+
+Flat (single leaf):
+
+```
+/obsidian-organize:add_wiki JWT security pitfalls --mode=single --dry-run
+```
+
+Hierarchical, sibling-grouped under a major theme:
+
+```
+/obsidian-organize:add_wiki _research/core-ai-security-threats.md \
+  --mode=single --hierarchical --major core-ai-security
+```
+
+This writes per-section leaf notes under
+`wiki/core-ai-security/threats/<section>.md` plus a
+`<threats>/_index.md` sub-hub and a `<core-ai-security>/_index.md`
+parent hub linking the sibling sub-hubs.

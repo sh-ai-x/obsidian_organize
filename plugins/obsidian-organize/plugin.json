@@ -1,0 +1,9 @@
+{
+  "name": "obsidian-organize",
+  "version": "0.5.0",
+  "description": "Topic-organizer for Obsidian vaults in the hermes-wiki-super LLM-Wiki style. Compatible with Claude Code, Codex, and Antigravity (agy).",
+  "author": {
+    "name": "sh-ai-x"
+  },
+  "license": "MIT"
+}

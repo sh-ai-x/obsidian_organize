@@ -1,0 +1,4 @@
+description = "Gather research on a topic and stage into _research/<topic>.md"
+prompt = """
+Execute the obsidian-organize:research skill to gather source material on the requested topic and stage it into _research/<topic>.md with LLM-Wiki frontmatter and tags.
+"""

@@ -1,8 +1,8 @@
 # obsidian-organize
 
-Claude Code marketplace plugin that organizes an Obsidian vault in the
-`hermes-wiki-super` LLM-Wiki style — Karpathy-style leaf notes with flat
-keyword tags, `## Related` wikilinks, and dense Obsidian graph edges.
+Obsidian vault organizer in the `hermes-wiki-super` LLM-Wiki style — Karpathy-style
+leaf notes with flat keyword tags, `## Related` wikilinks, and dense Obsidian graph edges.
+Compatible across **Claude Code**, **Codex**, and **Google Antigravity (`agy`)**.
 
 > **Plugin version 0.5.0** — adds hierarchical promotion
 > (`add_wiki --hierarchical` / `--major`) for multi-section staged
@@ -10,9 +10,12 @@ keyword tags, `## Related` wikilinks, and dense Obsidian graph edges.
 
 ## What this repo ships
 
-This repository is a Claude Code marketplace (`obsidian-organize-marketplace`)
-that bundles the `obsidian-organize` plugin. The plugin exposes five
-skills that drive an Obsidian vault through a hermes-wiki-super-shaped
+This repository ships the `obsidian-organize` plugin and skills compatible with:
+- **Claude Code** (via marketplace `obsidian-organize-marketplace` & `.claude-plugin/plugin.json`)
+- **Google Antigravity (`agy`)** (via `plugins/obsidian-organize/plugin.json` & `.agents/`)
+- **OpenAI Codex** (via `.codex-plugin/plugin.json` & `AGENTS.md`)
+
+The plugin exposes five skills that drive an Obsidian vault through a hermes-wiki-super-shaped
 layout. For the full per-skill contract, see
 [plugins/obsidian-organize/README.md](plugins/obsidian-organize/README.md).
 
@@ -109,6 +112,62 @@ claude plugin marketplace remove obsidian-organize-marketplace
 The plugin does not write outside the vault (no `~/.config`, no
 `~/.cache`, no global state). Uninstalling leaves the vault's notes
 untouched — you can delete the plugin without losing data.
+
+---
+
+## Installation for Google Antigravity (`agy`)
+
+Antigravity CLI (`agy`) natively discovers plugins and skills. You can install `obsidian-organize` either globally (available in all workspaces/vaults) or locally in a specific vault.
+
+### Option A: Global Plugin (Recommended)
+
+Run the included installer script:
+
+```bash
+./bin/install-agy.sh --global
+```
+
+This links `plugins/obsidian-organize` into `~/.gemini/config/plugins/obsidian-organize`. All five skills are immediately discovered and usable across all your Obsidian vaults with `agy`.
+
+To verify:
+```bash
+./bin/install-agy.sh --check
+```
+
+### Option B: Vault-Local Workspace Setup
+
+To configure a specific Obsidian vault without global changes:
+
+```bash
+./bin/install-agy.sh /path/to/your/obsidian/vault
+```
+
+This generates `.agents/plugins.json` and `.agents/skills.json` inside your vault, pointing to this repository.
+
+### Option C: Standalone agy Skills (Decoupled Mode)
+
+If you prefer to manage standalone skills without the plugin wrapper, the skills in `plugins/obsidian-organize/skills/` are 100% standard Antigravity skills. You can copy or link them directly into your vault's `.agents/skills/` or `~/.gemini/config/skills/`:
+
+```bash
+mkdir -p ~/.gemini/config/skills
+cp -r plugins/obsidian-organize/skills/* ~/.gemini/config/skills/
+```
+
+---
+
+## Multi-Agent Compatibility Matrix
+
+This repository is designed so that **Claude Code**, **Codex**, and **Google Antigravity (`agy`)** work seamlessly side by side without interference:
+
+| Component | Claude Code | Codex | Antigravity (`agy`) |
+|---|---|---|---|
+| **Plugin Manifest** | `plugins/obsidian-organize/.claude-plugin/plugin.json` | `plugins/obsidian-organize/.codex-plugin/plugin.json` | `plugins/obsidian-organize/plugin.json` |
+| **Marketplace** | `.claude-plugin/marketplace.json` | N/A | N/A |
+| **Workspace Config** | `.claude/` | `.codex/` | `.agents/` (`plugins.json`, `skills.json`) |
+| **Project Rules** | `CLAUDE.md` | `AGENTS.md` (symlink) | `GEMINI.md` (symlink) / `AGENTS.md` |
+| **Skills Source** | `plugins/obsidian-organize/skills/` | `plugins/obsidian-organize/skills/` | `plugins/obsidian-organize/skills/` |
+
+All three platforms share the exact same underlying skills, Python runtime (`_lib/`), and schemas (`_shared/`).
 
 ---
 

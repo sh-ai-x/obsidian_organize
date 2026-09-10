@@ -1,0 +1,4 @@
+description = "Retire a topic note, archive research, and clean up backlinks"
+prompt = """
+Execute the obsidian-organize:remove_wiki skill to retire a topic note, archive its staged research file, and remove wikilinks from source files.
+"""

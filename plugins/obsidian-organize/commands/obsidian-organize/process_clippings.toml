@@ -1,0 +1,4 @@
+description = "Distill raw clippings into wiki notes and archive originals"
+prompt = """
+Execute the obsidian-organize:process_clippings skill to distill raw files in Clippings/ into leaf notes under wiki/<domain>/, link them into the graph, and move originals to Clippings/processed/.
+"""

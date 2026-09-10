@@ -1,0 +1,5 @@
+description = "Initialize Obsidian vault layout (Clippings/, wiki/, _research/, wiki-map.md)"
+prompt = """
+Execute the obsidian-organize:bootstrap skill to create the canonical directory layout in the Obsidian vault:
+Clippings/, Clippings/processed/, wiki/, _research/, _archive/research/, and wiki-map.md.
+"""
