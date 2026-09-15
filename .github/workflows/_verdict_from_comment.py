@@ -90,6 +90,26 @@ CUTOFF_ENV = "VERDICT_COMMENT_CUTOFF"
 TRUSTED_AUTHOR_LOGINS = frozenset({"claude[bot]"})
 TRUSTED_APP_SLUGS = frozenset({"claude"})
 
+# --- Recovery trust anchor (issue #612/#625 fallback path) ---
+# When the agent runs (status=success) but emits NO parseable `Verdict:`
+# line — neither in its JSONL execution file nor as a PR comment posted
+# by the agent itself — review.yml's PARSE_FAILED branch posts a
+# synthetic recovery comment using the workflow's own GITHUB_TOKEN.
+# The comment is marked with RECOVERY_MARKER so we can distinguish it
+# from ordinary github-actions audit comments and so the trust anchor
+# stays explicit (only comments matching the marker AND authored by the
+# github-actions bot are accepted).
+#
+# This widens the trust set beyond the agent's own bot, but ONLY for
+# comments emitted by the CI workflow itself with the explicit
+# recovery marker. A human attacker who can post `pull-requests: write`
+# comments cannot forge this: they would need to write a comment whose
+# body contains RECOVERY_MARKER, posted as github-actions[bot] — which
+# requires compromising the GITHUB_TOKEN, which is a separate incident.
+RECOVERY_MARKER = "<!-- dev-kit-verdict-recovery -->"
+TRUSTED_RECOVERY_AUTHOR_LOGINS = frozenset({"github-actions[bot]"})
+TRUSTED_RECOVERY_APP_SLUGS = frozenset({"github-actions"})
+
 
 def _parse_iso(s: str) -> datetime | None:
     """Parse an ISO 8601 string, accepting the 'Z' suffix.
@@ -190,6 +210,43 @@ def _verdict_from_body(body: str) -> str:
     return m.group(1) if m else ""
 
 
+def _is_recovery_comment(comment: dict) -> bool:
+    """True iff this comment is a synthetic verdict recovery posted by the CI workflow.
+
+    Recovery comments are emitted by review.yml's PARSE_FAILED branch
+    when the agent runs (status=success) but emits no parseable verdict.
+    The workflow posts a `<!-- dev-kit-verdict-recovery -->` marker
+    comment via the GITHUB_TOKEN, so the comment is authored by the
+    github-actions bot with the workflow's own identity.
+
+    Trust anchor (issue #612/#625): the comment MUST carry the explicit
+    RECOVERY_MARKER (so an attacker cannot forge a recovery by posting
+    a plain `Verdict:` line) AND MUST be authored by the github-actions
+    bot via the github-actions GitHub App (same identity contract as
+    the claude[bot] trust anchor). Both conditions are required.
+    """
+    if not isinstance(comment, dict):
+        return False
+    body = comment.get("body", "")
+    if not isinstance(body, str) or RECOVERY_MARKER not in body:
+        return False
+    user = comment.get("user")
+    if not isinstance(user, dict):
+        return False
+    user_type = user.get("type")
+    if not isinstance(user_type, str) or user_type.lower() != "bot":
+        return False
+    login = user.get("login")
+    if isinstance(login, str) and login in TRUSTED_RECOVERY_AUTHOR_LOGINS:
+        return True
+    app = comment.get("performed_via_github_app")
+    if isinstance(app, dict):
+        slug = app.get("slug")
+        if isinstance(slug, str) and slug in TRUSTED_RECOVERY_APP_SLUGS:
+            return True
+    return False
+
+
 def main() -> int:
     if sys.stdin is None or sys.stdin.isatty():
         print(f"usage: {sys.argv[0]} reads JSON comments array from stdin", file=sys.stderr)
@@ -231,6 +288,23 @@ def main() -> int:
 
     for c in sorted(comments, key=_sort_key, reverse=True):
         if not _is_claude_author(c):
+            continue
+        if not _after_cutoff(c, cutoff):
+            continue
+        verdict = _verdict_from_body(c.get("body", ""))
+        if verdict:
+            print(verdict)
+            return 0
+    # Recovery pass (issue #612/#625): when the agent ran successfully
+    # but emitted no parseable verdict AND did not post a verdict
+    # comment itself, review.yml's PARSE_FAILED branch posts a synthetic
+    # recovery comment marked with RECOVERY_MARKER. Same newest-first
+    # ordering and cutoff filter as the claude[bot] pass above — only
+    # recovery comments from THIS run (strictly newer than the head
+    # commit timestamp) count, so a stale recovery comment from a
+    # previous push cannot resurrect (issue #244 invariant).
+    for c in sorted(comments, key=_sort_key, reverse=True):
+        if not _is_recovery_comment(c):
             continue
         if not _after_cutoff(c, cutoff):
             continue
