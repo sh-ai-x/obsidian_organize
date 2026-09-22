@@ -25,6 +25,10 @@ from _lib import (
 )
 
 
+def _seed_domain(vault_root, domain: str) -> None:
+    (vault_root / "wiki" / domain).mkdir(parents=True, exist_ok=True)
+
+
 # ---------------------------------------------------------------------------
 # Section slug helper
 # ---------------------------------------------------------------------------
@@ -104,6 +108,7 @@ def test_hierarchical_promotion_creates_per_section_leaves(vault_root, fixed_now
         "Jailbreaks",
         "Detection Monitoring",
     ]
+    _seed_domain(vault_root, "ai-agent-wiki")
     _write_sectioned_staged_file(vault_root, "core-ai-security-threats", titles, fixed_now=fixed_now)
 
     result = promote(
@@ -128,6 +133,7 @@ def test_hierarchical_promotion_creates_per_section_leaves(vault_root, fixed_now
 
 def test_hierarchical_promotion_sub_hub_lists_all_leaves(vault_root, fixed_now):
     titles = ["Section A", "Section B", "Section C", "Section D", "Section E"]
+    _seed_domain(vault_root, "ai-agent-wiki")
     _write_sectioned_staged_file(vault_root, "test-topic", titles, fixed_now=fixed_now)
 
     result = promote(
@@ -145,6 +151,7 @@ def test_hierarchical_promotion_sub_hub_lists_all_leaves(vault_root, fixed_now):
 
 def test_hierarchical_promotion_marks_staged_to_sub_hub(vault_root, fixed_now):
     titles = ["One", "Two", "Three", "Four", "Five"]
+    _seed_domain(vault_root, "ai-agent-wiki")
     _write_sectioned_staged_file(vault_root, "test-topic", titles, fixed_now=fixed_now)
 
     result = promote(
@@ -169,6 +176,7 @@ def test_hierarchical_promotion_marks_staged_to_sub_hub(vault_root, fixed_now):
 
 def test_hierarchical_promotion_with_major_writes_major_hub(vault_root, fixed_now):
     titles = ["S1", "S2", "S3", "S4", "S5"]
+    _seed_domain(vault_root, "ai-agent-wiki")
     _write_sectioned_staged_file(vault_root, "threats", titles, fixed_now=fixed_now)
 
     result = promote(
@@ -195,6 +203,7 @@ def test_hierarchical_promotion_with_major_writes_major_hub(vault_root, fixed_no
 
 def test_hierarchical_auto_enables_at_5_sections(vault_root, fixed_now):
     titles = ["A", "B", "C", "D", "E"]
+    _seed_domain(vault_root, "ai-agent-wiki")
     _write_sectioned_staged_file(vault_root, "auto-topic", titles, fixed_now=fixed_now)
 
     # No explicit hierarchical flag; >= 5 sections should auto-enable.
@@ -204,6 +213,7 @@ def test_hierarchical_auto_enables_at_5_sections(vault_root, fixed_now):
 
 def test_hierarchical_stays_flat_below_5_sections(vault_root, fixed_now):
     titles = ["Only", "Two", "Sections"]
+    _seed_domain(vault_root, "ai-agent-wiki")
     _write_sectioned_staged_file(vault_root, "small-topic", titles, fixed_now=fixed_now)
 
     result = promote(vault_root, "small-topic", domain="ai-agent-wiki", now=fixed_now)
@@ -213,6 +223,7 @@ def test_hierarchical_stays_flat_below_5_sections(vault_root, fixed_now):
 
 def test_hierarchical_force_off_below_threshold(vault_root, fixed_now):
     titles = ["A", "B", "C", "D", "E", "F"]  # would auto-enable
+    _seed_domain(vault_root, "ai-agent-wiki")
     _write_sectioned_staged_file(vault_root, "explicit-topic", titles, fixed_now=fixed_now)
 
     result = promote(
@@ -240,6 +251,7 @@ def test_hierarchical_supports_h3_numbered_sections(vault_root, fixed_now):
         "## Sources\n\n- (none)\n\n"
         "## Notes\n\n- (none)\n"
     )
+    _seed_domain(vault_root, "ai-agent-wiki")
     write_hierarchical_staged_file(
         vault_root, "h3-topic",
         sections=[(i, f"Section{i}") for i in range(1, 6)],
@@ -260,6 +272,7 @@ def test_hierarchical_supports_h3_numbered_sections(vault_root, fixed_now):
 def test_hierarchical_refuses_zero_sections(vault_root, fixed_now):
     """An unparseable research file (no numbered H2/H3 sections) should
     raise a clear error rather than silently falling back to flat."""
+    _seed_domain(vault_root, "ai-agent-wiki")
     body = "Just some prose, no numbered headings.\n\nMore prose.\n"
     write_hierarchical_staged_file(
         vault_root, "nosections",
@@ -277,18 +290,21 @@ def test_hierarchical_refuses_zero_sections(vault_root, fixed_now):
 
 
 # ---------------------------------------------------------------------------
-# Backwards compatibility
+# Backwards compatibility: flat mode now lives under wiki/<domain>/
 # ---------------------------------------------------------------------------
 
 
-def test_flat_mode_still_writes_to_topics_dir(vault_root, fixed_now):
-    """Existing flat-mode behavior must be preserved: 1-3 sections stay flat
-    and write to ``topics/<slug>.md``, not ``wiki/<domain>/...``."""
+def test_flat_mode_writes_to_wiki_domain_dir(vault_root, fixed_now):
+    """Below the auto-hierarchical threshold, add_wiki still produces a
+    single leaf — but at ``wiki/<domain>/<slug>.md``, not the legacy
+    ``topics/<slug>.md``. Hierarchical-mode-specific fields stay empty."""
     titles = ["Only", "Two", "Sections"]
+    _seed_domain(vault_root, "ai-agent-wiki")
     _write_sectioned_staged_file(vault_root, "flat-topic", titles, fixed_now=fixed_now)
 
     result = promote(vault_root, "flat-topic", domain="ai-agent-wiki", now=fixed_now)
     assert result.leaf_paths == []
     assert result.sub_hub_path is None
-    assert result.topic_path == vault_root / "topics" / "flat-topic.md"
+    assert result.topic_path == vault_root / "wiki" / "ai-agent-wiki" / "flat-topic.md"
     assert result.topic_path.exists()
+    assert not (vault_root / "topics" / "flat-topic.md").exists()
