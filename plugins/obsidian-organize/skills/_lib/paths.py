@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-BACKLINK_MARKER_TEMPLATE = "<!-- back-linked from [[topics/{topic}]] on {timestamp} -->"
+BACKLINK_MARKER_TEMPLATE = (
+    "<!-- back-linked from [[wiki/{domain}/{topic}]] on {timestamp} -->"
+)
 
 
 def resolve_staged_path(vault_root: Path, topic: str) -> Path:
@@ -14,7 +16,33 @@ def resolve_staged_path(vault_root: Path, topic: str) -> Path:
 
 
 def resolve_topic_path(vault_root: Path, topic: str) -> Path:
+    """Legacy flat-mode topic-note path (``topics/<slug>.md``).
+
+    Retained for backward compatibility — ``remove_wiki`` still scans
+    this directory for retired topics whose path was written by older
+    0.3.x releases. New flat-mode promotions go to
+    :func:`resolve_leaf_path` instead.
+    """
     return vault_root / "topics" / f"{topic}.md"
+
+
+def resolve_leaf_path(vault_root: Path, domain: str, slug: str) -> Path:
+    """Flat-mode leaf-note path (``wiki/<domain>/<slug>.md``).
+
+    This is the single destination for flat-mode ``add_wiki``
+    promotions. ``<slug>`` must already be normalized; the function
+    does no slug derivation.
+    """
+    return vault_root / "wiki" / domain / f"{slug}.md"
+
+
+def resolve_log_path(vault_root: Path, domain: str) -> Path:
+    """Per-domain change log (``wiki/<domain>/log.md``).
+
+    The log is appended to on every successful promotion (flat or
+    hierarchical). Created with a header on first write.
+    """
+    return vault_root / "wiki" / domain / "log.md"
 
 
 def resolve_archive_path(vault_root: Path, topic: str, now: datetime | None = None) -> Path:
@@ -113,13 +141,13 @@ _EXCLUDED_DIRS = {
 }
 
 
-def scan_backlinks(vault_root: Path, topic: str) -> list[BacklinkHit]:
+def scan_backlinks(vault_root: Path, topic: str, *, domain: str) -> list[BacklinkHit]:
     """Walk the vault (excluding well-known dir names) for the back-link marker.
 
     Returns the lines (with file + 1-indexed line number) that contain the
     marker for `topic`. The caller decides whether to delete them.
     """
-    marker = f"[[topics/{topic}]]"
+    marker = f"[[wiki/{domain}/{topic}]]"
     hits: list[BacklinkHit] = []
     for path in vault_root.rglob("*.md"):
         rel_parts = path.relative_to(vault_root).parts

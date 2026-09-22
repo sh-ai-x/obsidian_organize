@@ -171,8 +171,27 @@ more recent than any staged file).
    If a leaf note already exists at that path and `--force` is **not**
    set, refuse and surface the existing path so the user can decide.
 
-6. **Update the domain's `log.md` and the root `wiki-map.md`.** Same
-   shape as `process_clippings` § 6 and § 7.
+   **`<domain>` resolution:** auto-detected from the existing
+   `wiki/<domain>/` directories (first sorted directory is the default
+   when exactly one is found). Callers with multiple wikis should pass
+   `--domain=<name>` explicitly.
+
+6. **Update the domain's `log.md` and the root `wiki-map.md`.**
+
+   - Append one entry to `<vault>/wiki/<domain>/log.md`:
+     `## [<YYYY-MM-DD>] ingest | <Title>` plus a one-line summary
+     and a wikilink to the new leaf. Create the log with a header if
+     missing.
+   - Append one row to `<vault>/wiki-map.md` of the form
+     `- [[wiki/<domain>/|<Title>]] — <summary> (<domain>)`.
+     If the file does not exist, create it with an auto-managed
+     `## 🆕 Recent Additions` block delimited by
+     `obsidian-organize:wiki-map:auto-start` / `auto-end` markers. If
+     markers already exist (from a prior promotion or from
+     `bootstrap`), insert the row inside that block. If the file exists
+     without markers (the user-managed case), append the auto-managed
+     block at the bottom — prior themed sections are preserved exactly
+     as written. Re-running for the same leaf is a no-op (idempotent).
 
 7. **Update sibling notes' `## Related`.** Same rule as
    `process_clippings` § 8: only when the relationship is obvious from

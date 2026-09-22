@@ -4,19 +4,27 @@ from __future__ import annotations
 
 from _lib import (
     BACKLINK_MARKER_TEMPLATE,
+    detect_wiki_domain,
     parse_frontmatter,
     promote,
     resolve_archive_path,
+    resolve_leaf_path,
     resolve_staged_path,
-    resolve_topic_path,
     retire,
     write_staged_file,
     ResearchInput,
 )
 
 
+def _seed_domain(vault_root) -> str:
+    domain = detect_wiki_domain(vault_root)
+    (vault_root / "wiki" / domain).mkdir(parents=True, exist_ok=True)
+    return domain
+
+
 def test_full_lifecycle_research_then_add_wiki_then_remove_wiki(vault_root, fixed_now):
     topic = "hermes-protocol"
+    domain = _seed_domain(vault_root)
 
     # 1. research
     write_staged_file(
@@ -33,18 +41,20 @@ def test_full_lifecycle_research_then_add_wiki_then_remove_wiki(vault_root, fixe
 
     # 2. add_wiki
     promotion = promote(vault_root, topic, now=fixed_now)
-    topic_path = promotion.topic_path
-    assert topic_path.exists()
+    leaf_path = promotion.topic_path
+    assert leaf_path == resolve_leaf_path(vault_root, domain, topic)
+    assert leaf_path.exists()
 
-    # Topic note frontmatter is sane.
-    fm, _ = parse_frontmatter(topic_path.read_text(encoding="utf-8"))
+    # Leaf frontmatter is sane.
+    fm, _ = parse_frontmatter(leaf_path.read_text(encoding="utf-8"))
     assert fm["status"] == "active"
     assert fm["topic"] == topic
-    assert fm["tags"] == [f"topic/{topic}"]
+    assert fm["domain"] == domain
 
-    # Back-links present.
+    # Back-links present (marker is keyed to the new wiki-domain path).
     expected_marker = BACKLINK_MARKER_TEMPLATE.format(
-        topic=topic, timestamp=fixed_now.isoformat(timespec="seconds")
+        domain=domain, topic=topic,
+        timestamp=fixed_now.isoformat(timespec="seconds"),
     )
     for src in ("sources/source-a.md", "sources/source-b.md"):
         assert expected_marker in (vault_root / src).read_text(encoding="utf-8")
@@ -52,21 +62,25 @@ def test_full_lifecycle_research_then_add_wiki_then_remove_wiki(vault_root, fixe
     # 3. remove_wiki
     result = retire(vault_root, topic, now=fixed_now)
 
-    # Topic note gone, staged file archived, back-links stripped.
-    assert not topic_path.exists()
+    # Leaf gone, staged file archived, back-links stripped, wiki-map row gone.
+    assert not leaf_path.exists()
     assert not staged.exists()
     assert result.archived_to is not None
     assert result.archived_to.exists()
     archived_fm, _ = parse_frontmatter(result.archived_to.read_text(encoding="utf-8"))
     assert archived_fm["status"] == "archived"
     for src in ("sources/source-a.md", "sources/source-b.md"):
-        assert "[[topics/hermes-protocol]]" not in (
+        assert f"[[wiki/{domain}/{topic}]]" not in (
             vault_root / src
         ).read_text(encoding="utf-8")
+    assert result.wiki_map_row_removed is True
+    wiki_map = (vault_root / "wiki-map.md").read_text(encoding="utf-8")
+    assert f"wiki/{domain}/{topic}.md" not in wiki_map
 
 
 def test_lifecycle_with_keep_staged(vault_root, fixed_now):
     topic = "wire-protocols"
+    _seed_domain(vault_root)
     write_staged_file(
         vault_root,
         ResearchInput(
@@ -84,4 +98,5 @@ def test_lifecycle_with_keep_staged(vault_root, fixed_now):
         resolve_staged_path(vault_root, topic).read_text(encoding="utf-8")
     )
     assert fm["status"] == "archived"
-    assert not resolve_topic_path(vault_root, topic).exists()
+    domain = detect_wiki_domain(vault_root)
+    assert not resolve_leaf_path(vault_root, domain, topic).exists()

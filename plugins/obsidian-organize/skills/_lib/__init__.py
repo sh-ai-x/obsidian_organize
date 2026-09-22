@@ -22,10 +22,19 @@ from .paths import (
     resolve_hierarchical_paths,
     resolve_staged_path,
     resolve_topic_path,
+    resolve_leaf_path,
+    resolve_log_path,
     resolve_archive_path,
     detect_wiki_domain,
     scan_backlinks,
     BACKLINK_MARKER_TEMPLATE,
+)
+from .wiki_map import (
+    AUTO_END as WIKI_MAP_AUTO_END,
+    AUTO_START as WIKI_MAP_AUTO_START,
+    RECENT_SECTION_HEADING,
+    append_wiki_map_row,
+    remove_wiki_map_row,
 )
 from .research import (
     ResearchInput,
@@ -57,10 +66,18 @@ __all__ = [
     "resolve_hierarchical_paths",
     "resolve_staged_path",
     "resolve_topic_path",
+    "resolve_leaf_path",
+    "resolve_log_path",
     "resolve_archive_path",
     "detect_wiki_domain",
     "scan_backlinks",
     "BACKLINK_MARKER_TEMPLATE",
+    # wiki-map
+    "WIKI_MAP_AUTO_START",
+    "WIKI_MAP_AUTO_END",
+    "RECENT_SECTION_HEADING",
+    "append_wiki_map_row",
+    "remove_wiki_map_row",
     # research
     "ResearchInput",
     "ResearchResult",

@@ -10,10 +10,11 @@ from pathlib import Path
 from .frontmatter import parse_frontmatter, serialize_frontmatter, FrontmatterDict
 from .paths import (
     HierarchicalPaths,
-    resolve_hierarchical_paths,
-    resolve_staged_path,
-    resolve_topic_path,
     detect_wiki_domain,
+    resolve_hierarchical_paths,
+    resolve_leaf_path,
+    resolve_log_path,
+    resolve_staged_path,
     BACKLINK_MARKER_TEMPLATE,
 )
 from .slug import (
@@ -21,6 +22,7 @@ from .slug import (
     section_title_to_slug,
     validate_topic_slug,
 )
+from .wiki_map import append_wiki_map_row
 
 
 _HIERARCHICAL_AUTO_THRESHOLD = 5
@@ -45,6 +47,9 @@ class AddWikiResult:
     leaf_paths: list[Path] = field(default_factory=list)
     sub_hub_path: Path | None = None
     major_hub_path: Path | None = None
+    # The domain the leaf landed in (or was passed in). Exposed so the
+    # caller can log / audit without re-deriving it.
+    domain: str | None = None
 
 
 def promote(
@@ -59,10 +64,10 @@ def promote(
     major: str | None = None,
     domain: str | None = None,
 ) -> AddWikiResult:
-    """Promote the staged research file into a topic note.
+    """Promote the staged research file into a leaf note.
 
-    In **flat mode** (the default), the result is a single
-    ``topics/<slug>.md`` file. In **hierarchical mode** (explicit
+    In **flat mode** (the default), the leaf lands at
+    ``wiki/<domain>/<slug>.md``. In **hierarchical mode** (explicit
     ``hierarchical=True`` or a staged research with ≥
     :data:`_HIERARCHICAL_AUTO_THRESHOLD` numbered sections), the staged
     research is split into one leaf note per section under
@@ -70,8 +75,11 @@ def promote(
     major-hub files. Pass ``no_hierarchical=True`` to force flat output
     even for large research files.
 
-    The ``domain`` argument is required for hierarchical mode and
-    auto-detected when not given (see :func:`detect_wiki_domain`).
+    The ``domain`` argument auto-detects when not given (see
+    :func:`detect_wiki_domain`); callers with multiple wikis should
+    pass it explicitly. Every successful promotion also appends a row
+    to the vault root ``wiki-map.md`` and an entry to the domain
+    ``log.md`` — both updates are idempotent.
     """
     topic_slug = normalize_topic_slug(topic)
     validate_topic_slug(topic_slug)
@@ -92,6 +100,8 @@ def promote(
     )
     use_hierarchical = hierarchical or auto_hierarchical
 
+    resolved_domain = domain or detect_wiki_domain(vault_root)
+
     if use_hierarchical:
         if not sections:
             raise ValueError(
@@ -99,22 +109,32 @@ def promote(
                 f"hierarchical mode needs H2 `## §N` or H3 `### N.` headings. "
                 f"Pass no_hierarchical=True to force flat output."
             )
-        return _promote_hierarchical(
+        result = _promote_hierarchical(
             vault_root,
             topic_slug,
             staged,
             staged_fm,
             sections,
-            domain=domain or detect_wiki_domain(vault_root),
+            domain=resolved_domain,
             major=major,
             force=force,
             now=now,
         )
+    else:
+        result = _promote_flat(
+            vault_root,
+            topic_slug,
+            staged,
+            staged_text,
+            staged_fm,
+            domain=resolved_domain,
+            force=force,
+            add_backlinks=add_backlinks,
+            now=now,
+        )
 
-    return _promote_flat(
-        vault_root, topic_slug, staged, staged_text, staged_fm,
-        force=force, add_backlinks=add_backlinks, now=now,
-    )
+    result.domain = resolved_domain
+    return result
 
 
 def _promote_flat(
@@ -124,34 +144,41 @@ def _promote_flat(
     staged_text: str,
     staged_fm: FrontmatterDict,
     *,
+    domain: str,
     force: bool,
     add_backlinks: bool,
     now: datetime | None,
 ) -> AddWikiResult:
-    """Original single-file flat-mode behavior. Writes ``topics/<slug>.md``."""
-    target = resolve_topic_path(vault_root, topic_slug)
+    """Flat-mode promotion. Writes ``wiki/<domain>/<slug>.md`` plus the
+    root ``wiki-map.md`` row and a ``log.md`` entry. The wiki-map /
+    log updates are the only side effects that touch files outside the
+    new leaf; everything else stays inside ``wiki/<domain>/``."""
+    target = resolve_leaf_path(vault_root, domain, topic_slug)
     if target.exists() and not force:
         raise FileExistsError(
-            f"topic note already exists: {target}; pass force=True to overwrite"
+            f"leaf note already exists: {target}; pass force=True to overwrite"
         )
 
     when = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
     topic_fm: FrontmatterDict = {
         "topic": topic_slug,
+        "domain": domain,
         "created": when,
         "updated": when,
-        "tags": [f"topic/{topic_slug}"],
+        "tags": _leaf_tags_for_flat(topic_slug),
         "sources": list(staged_fm.get("sources") or []),
         "status": "active",
     }
-    body = _render_body(staged_fm)
+    body = _render_body(staged_fm, topic_slug)
 
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(serialize_frontmatter(topic_fm, body), encoding="utf-8")
 
     back_links_added: list[Path] = []
     if add_backlinks:
-        marker = BACKLINK_MARKER_TEMPLATE.format(topic=topic_slug, timestamp=when)
+        marker = BACKLINK_MARKER_TEMPLATE.format(
+            domain=domain, topic=topic_slug, timestamp=when
+        )
         for src in topic_fm["sources"]:
             src_path = _resolve_source(vault_root, src)
             if src_path is None or not src_path.exists():
@@ -168,6 +195,23 @@ def _promote_flat(
     staged.write_text(
         serialize_frontmatter(staged_fm, _body_after_parse(staged_text)),
         encoding="utf-8",
+    )
+
+    # Side effects: root wiki-map + domain log.
+    _append_wiki_map_row(
+        vault_root,
+        domain=domain,
+        note_rel_path=str(target.relative_to(vault_root)),
+        title=_title_for(topic_slug),
+        summary=staged_fm.get("summary") or f"Distilled from research on {topic_slug}.",
+    )
+    _append_domain_log(
+        vault_root,
+        domain=domain,
+        when=when,
+        note_rel_path=str(target.relative_to(vault_root)),
+        title=_title_for(topic_slug),
+        summary=staged_fm.get("summary") or "Distilled from staged research.",
     )
 
     return AddWikiResult(
@@ -278,6 +322,31 @@ def _promote_hierarchical(
     staged.write_text(
         serialize_frontmatter(staged_fm, _body_after_parse(staged_text)),
         encoding="utf-8",
+    )
+
+    # Side effects: root wiki-map (sub-hub is the durable entry point,
+    # not the per-section leaves) + domain log.
+    leaf_count = len(leaf_paths)
+    major_label = f"{major}/" if major else ""
+    sub_hub_title = f"{topic_slug.replace('-', ' ').title()} — sub-hub"
+    summary = (
+        f"Hierarchical promotion: {leaf_count} leaf notes under "
+        f"{major_label}{topic_slug}/_index."
+    )
+    _append_wiki_map_row(
+        vault_root,
+        domain=domain,
+        note_rel_path=str(paths.sub_hub.relative_to(vault_root)),
+        title=sub_hub_title,
+        summary=summary,
+    )
+    _append_domain_log(
+        vault_root,
+        domain=domain,
+        when=when,
+        note_rel_path=str(paths.sub_hub.relative_to(vault_root)),
+        title=sub_hub_title,
+        summary=f"{leaf_count} leaf notes" + (f" (major: {major})" if major else ""),
     )
 
     return AddWikiResult(
@@ -510,9 +579,13 @@ def _first_sentence(text: str) -> str:
     return ""
 
 
-def _render_body(staged_fm: FrontmatterDict) -> str:
+def _render_body(staged_fm: FrontmatterDict, topic_slug: str) -> str:
     sources = staged_fm.get("sources") or []
-    out: list[str] = ["## Summary", "", "(auto-generated from staged Notes)", ""]
+    summary = staged_fm.get("summary") or "(auto-generated from staged Notes)"
+    title = topic_slug.replace("-", " ").title()
+    out: list[str] = [f"# {title}", "", f"> {summary}", "", "## Summary", ""]
+    out.append(summary)
+    out.append("")
     out.append("## Sources")
     out.append("")
     if not sources:
@@ -541,4 +614,65 @@ def _resolve_source(vault_root: Path, src: str) -> Path | None:
 def _body_after_parse(text: str) -> str:
     _, body = parse_frontmatter(text)
     return body
+
+
+def _title_for(topic_slug: str) -> str:
+    """Human-readable title from a topic slug. ``jwt-pitfalls`` → ``JWT Pitfalls``."""
+    return topic_slug.replace("-", " ").title()
+
+
+def _leaf_tags_for_flat(topic_slug: str) -> list[str]:
+    """Flat-mode tag list. Includes the slug so cross-leaf graph edges
+    exist within the same wiki-domain."""
+    return [topic_slug]
+
+
+def _append_wiki_map_row(
+    vault_root: Path,
+    *,
+    domain: str,
+    note_rel_path: str,
+    title: str,
+    summary: str,
+) -> None:
+    """Thin wrapper around :func:`append_wiki_map_row` kept here so
+    callers of :func:`promote` do not need to know about the ``_lib``
+    sub-package layout. Idempotent."""
+    append_wiki_map_row(
+        vault_root,
+        domain=domain,
+        note_rel_path=note_rel_path,
+        title=title,
+        summary=summary,
+    )
+
+
+def _append_domain_log(
+    vault_root: Path,
+    *,
+    domain: str,
+    when: str,
+    note_rel_path: str,
+    title: str,
+    summary: str,
+) -> None:
+    """Append one log entry to ``<vault>/wiki/<domain>/log.md``.
+
+    Idempotent in the sense that re-running for the same promotion only
+    appends a single duplicate line; the file is never rewritten. The
+    caller is responsible for ensuring a single append per logical
+    promotion.
+    """
+    log = resolve_log_path(vault_root, domain)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    if not log.exists():
+        header = f"# {domain.replace('-', ' ').title()} — Change Log\n\n"
+        log.write_text(header, encoding="utf-8")
+    date = when.split("T", 1)[0]
+    entry = (
+        f"## [{date}] ingest | {title}\n"
+        f"{summary} — [[{note_rel_path}|{title}]]\n\n"
+    )
+    with log.open("a", encoding="utf-8") as f:
+        f.write(entry)
 
